@@ -87,21 +87,13 @@ export default function HomeScreen() {
           {shouldWrite && targetDate !== '' && (() => {
             const info = getDiaryDateInfo(targetDate);
             return (
-              <>
-                <View style={styles.dateBadge}>
-                  <Text style={styles.dateBadgeTitle}>{info.title}</Text>
-                  {info.sub !== null && (
-                    <Text style={styles.dateBadgeSub}>{info.sub}</Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={styles.primaryButton}
-                  onPress={() => navigation.navigate('DiaryFlow', { targetDate })}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.primaryButtonText}>{info.title}を書く</Text>
-                </TouchableOpacity>
-              </>
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => navigation.navigate('DiaryFlow', { targetDate })}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.primaryButtonText}>{info.title}を書く</Text>
+              </TouchableOpacity>
             );
           })()}
 
@@ -146,24 +138,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     gap: 14,
-  },
-  dateBadge: {
-    backgroundColor: '#FFF3E0',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    gap: 2,
-  },
-  dateBadgeTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#C47F00',
-  },
-  dateBadgeSub: {
-    fontSize: 12,
-    color: '#C47F00',
-    opacity: 0.8,
   },
   primaryButton: {
     backgroundColor: '#F5A623',

@@ -22,6 +22,12 @@ import {
   getScoreReaction,
   getAskContent,
 } from '../utils/speech';
+import { parseJapaneseScore } from '../utils/japaneseNumber';
+import {
+  useSafeSpeechEvent,
+  startSpeechRecognition,
+  stopSpeechRecognition,
+} from '../utils/speechRecognition';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteType = RouteProp<RootStackParamList, 'DiaryFlow'>;
@@ -34,6 +40,9 @@ function scoreBg(score: number) {
   return { backgroundColor: '#E8736B' };
 }
 
+const VOICE_UNAVAILABLE =
+  '音声入力は開発ビルドで確認します。今は文字入力を使ってください。';
+
 export default function DiaryFlowScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
@@ -41,8 +50,6 @@ export default function DiaryFlowScreen() {
 
   const isYesterday = targetDate !== toDateString(new Date());
 
-  // All random messages are picked ONCE per component mount so they never
-  // change while the user is interacting (no layout shifts from re-renders).
   const scoreQuestion = useMemo(
     () =>
       isYesterday
@@ -62,8 +69,86 @@ export default function DiaryFlowScreen() {
   const [isContentFocused, setIsContentFocused] = useState(false);
   const contentRef = useRef<TextInput>(null);
 
-  function handleVoiceScore() {
-    Alert.alert('音声入力', '音声入力は後で実装します');
+  // Voice input state
+  const [isListening, setIsListening] = useState(false);
+  // Ref (not state) so event callbacks always read current target without stale closure
+  const voiceTargetRef = useRef<'score' | 'content' | null>(null);
+
+  // Register speech recognition events safely (no-ops in Expo Go)
+  useSafeSpeechEvent('start', () => setIsListening(true));
+  useSafeSpeechEvent('end', () => setIsListening(false));
+  useSafeSpeechEvent('result', (event) => {
+    if (!event.isFinal) return;
+    const transcript: string = event.results[0]?.transcript ?? '';
+    const target = voiceTargetRef.current;
+    voiceTargetRef.current = null;
+
+    if (target === 'score') {
+      const parsed = parseJapaneseScore(transcript);
+      if (parsed !== null) {
+        setScoreText(String(parsed));
+      } else {
+        Alert.alert(
+          '聞き取れませんでした',
+          `「${transcript}」を点数に変換できませんでした。数字で入力してください。`,
+        );
+      }
+    } else if (target === 'content') {
+      setContent((prev) => (prev ? prev + '\n' + transcript : transcript));
+    }
+  });
+  useSafeSpeechEvent('error', (event) => {
+    const target = voiceTargetRef.current;
+    voiceTargetRef.current = null;
+    setIsListening(false);
+    if (event.error !== 'aborted') {
+      Alert.alert(
+        '聞き取れませんでした',
+        target === 'score'
+          ? '点数を聞き取れませんでした。数字で入力してください。'
+          : '音声を認識できませんでした。もう一度試してください。',
+      );
+    }
+  });
+
+  async function handleVoiceScore() {
+    if (isListening) { stopSpeechRecognition(); return; }
+    try {
+      voiceTargetRef.current = 'score';
+      const started = await startSpeechRecognition('ja-JP');
+      if (!started) {
+        voiceTargetRef.current = null;
+        Alert.alert('音声入力', VOICE_UNAVAILABLE);
+      }
+    } catch (e: any) {
+      voiceTargetRef.current = null;
+      Alert.alert(
+        e?.message === 'permission_denied' ? 'マイク権限' : '音声入力',
+        e?.message === 'permission_denied'
+          ? 'マイクの使用を許可してください。設定アプリから変更できます。'
+          : VOICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  async function handleVoiceContent() {
+    if (isListening) { stopSpeechRecognition(); return; }
+    try {
+      voiceTargetRef.current = 'content';
+      const started = await startSpeechRecognition('ja-JP');
+      if (!started) {
+        voiceTargetRef.current = null;
+        Alert.alert('音声入力', VOICE_UNAVAILABLE);
+      }
+    } catch (e: any) {
+      voiceTargetRef.current = null;
+      Alert.alert(
+        e?.message === 'permission_denied' ? 'マイク権限' : '音声入力',
+        e?.message === 'permission_denied'
+          ? 'マイクの使用を許可してください。設定アプリから変更できます。'
+          : VOICE_UNAVAILABLE,
+      );
+    }
   }
 
   function handleScoreOK() {
@@ -97,8 +182,13 @@ export default function DiaryFlowScreen() {
     });
   }
 
+  // Score and reaction steps use a plain (non-scrolling) layout so the
+  // content fits stably on one screen with no bounce. Content step uses
+  // scrollable so automaticallyAdjustKeyboardInsets can shift content up.
+  const scrollable = step === 'content';
+
   return (
-    <ScreenLayout scrollable>
+    <ScreenLayout scrollable={scrollable}>
       <View style={styles.header}>
         <Text style={styles.diaryTitle}>{diaryInfo.title}</Text>
         {diaryInfo.sub !== null && (
@@ -108,30 +198,29 @@ export default function DiaryFlowScreen() {
 
       {/* ── Step 1: Score input ── */}
       {step === 'score' && (
-        <View style={styles.section}>
+        <View style={styles.scoreSection}>
           <CharacterBubble
             message={scoreQuestion}
             characterId={DEFAULT_CHARACTER_ID}
           />
 
-          {/* Primary: large voice button */}
           <TouchableOpacity
-            style={styles.voicePrimaryBtn}
+            style={[styles.voicePrimaryBtn, isListening && styles.voicePrimaryBtnActive]}
             onPress={handleVoiceScore}
             activeOpacity={0.8}
           >
-            <Text style={styles.voicePrimaryIcon}>🎤</Text>
-            <Text style={styles.voicePrimaryText}>点数を声で入力する</Text>
+            <Text style={styles.voicePrimaryIcon}>{isListening ? '⏹' : '🎤'}</Text>
+            <Text style={styles.voicePrimaryText}>
+              {isListening ? '認識中… タップで止める' : '点数を声で入力する'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Divider */}
           <View style={styles.orRow}>
             <View style={styles.orLine} />
             <Text style={styles.orText}>または</Text>
             <View style={styles.orLine} />
           </View>
 
-          {/* Secondary: numeric input */}
           <View style={styles.numericArea}>
             <Text style={styles.numericLabel}>数字で入力</Text>
             <TextInput
@@ -148,7 +237,6 @@ export default function DiaryFlowScreen() {
             />
           </View>
 
-          {/* OK button — confirms score (voice or number) */}
           <View style={styles.actionWrap}>
             <TouchableOpacity
               style={styles.primaryBtn}
@@ -178,7 +266,6 @@ export default function DiaryFlowScreen() {
           <Text style={styles.scoreOnlyHint}>今日は点数だけでも大丈夫</Text>
 
           <View style={styles.actionWrap}>
-            {/* Primary: save with score only */}
             <TouchableOpacity
               style={styles.primaryBtn}
               onPress={() => goToConfirm('')}
@@ -187,7 +274,6 @@ export default function DiaryFlowScreen() {
               <Text style={styles.primaryBtnText}>OK</Text>
             </TouchableOpacity>
 
-            {/* Secondary: optionally add content */}
             <TouchableOpacity
               style={styles.secondaryBtn}
               onPress={handleProceedToContent}
@@ -209,7 +295,6 @@ export default function DiaryFlowScreen() {
       {/* ── Step 3: Content (optional) ── */}
       {step === 'content' && (
         <View style={styles.section}>
-          {/* contentQuestion is stored in state — never rerenders while typing */}
           <CharacterBubble
             message={contentQuestion}
             characterId={DEFAULT_CHARACTER_ID}
@@ -220,14 +305,16 @@ export default function DiaryFlowScreen() {
           </Text>
 
           <TouchableOpacity
-            style={styles.voiceContentBtn}
-            onPress={() => Alert.alert('音声入力', '音声入力は後で実装します')}
+            style={[styles.voiceContentBtn, isListening && styles.voiceContentBtnActive]}
+            onPress={handleVoiceContent}
             activeOpacity={0.8}
           >
-            <Text style={styles.voiceContentBtnText}>🎤 話して入力する</Text>
+            <Text style={styles.voiceContentBtnText}>
+              {isListening ? '⏹ 認識中… タップで止める' : '🎤 話して入力する'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Keyboard close — space always reserved, only visible when focused */}
+          {/* Compact keyboard close pill — space always reserved, shown only when focused */}
           <TouchableOpacity
             style={[
               styles.keyboardCloseBtn,
@@ -283,8 +370,8 @@ export default function DiaryFlowScreen() {
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingTop: 12,
+    paddingBottom: 4,
     alignItems: 'center',
     gap: 2,
   },
@@ -297,6 +384,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#AAA',
   },
+
+  // Score step uses its own style to allow tighter vertical control
+  scoreSection: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: 24,
+  },
   section: {
     paddingBottom: 40,
   },
@@ -305,18 +399,21 @@ const styles = StyleSheet.create({
 
   voicePrimaryBtn: {
     marginHorizontal: 24,
-    marginTop: 20,
+    marginTop: 16,
     backgroundColor: '#F5A623',
     borderRadius: 16,
-    paddingVertical: 24,
+    paddingVertical: 20,
     alignItems: 'center',
     gap: 6,
   },
+  voicePrimaryBtnActive: {
+    backgroundColor: '#D4881A',
+  },
   voicePrimaryIcon: {
-    fontSize: 32,
+    fontSize: 30,
   },
   voicePrimaryText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
@@ -325,7 +422,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 24,
-    marginVertical: 20,
+    marginVertical: 14,
     gap: 10,
   },
   orLine: {
@@ -340,7 +437,7 @@ const styles = StyleSheet.create({
 
   numericArea: {
     marginHorizontal: 24,
-    gap: 10,
+    gap: 8,
   },
   numericLabel: {
     fontSize: 14,
@@ -353,7 +450,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E0D8CC',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
     fontSize: 28,
     fontWeight: 'bold',
     color: '#333',
@@ -364,7 +461,7 @@ const styles = StyleSheet.create({
 
   scoreBadgeWrap: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: 16,
   },
   scoreBadge: {
     paddingHorizontal: 28,
@@ -389,7 +486,7 @@ const styles = StyleSheet.create({
   optionalHint: {
     marginHorizontal: 24,
     marginTop: 4,
-    marginBottom: 16,
+    marginBottom: 12,
     fontSize: 13,
     color: '#AAA',
     lineHeight: 20,
@@ -397,30 +494,39 @@ const styles = StyleSheet.create({
   },
   voiceContentBtn: {
     marginHorizontal: 24,
-    marginBottom: 16,
+    marginBottom: 12,
     backgroundColor: '#FFF3E0',
     borderRadius: 14,
-    paddingVertical: 18,
+    paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#F5C97A',
+  },
+  voiceContentBtnActive: {
+    backgroundColor: '#FFE5B4',
+    borderColor: '#D4881A',
   },
   voiceContentBtnText: {
     fontSize: 17,
     color: '#C47F00',
     fontWeight: '600',
   },
+
+  // Compact pill — right-aligned, space always reserved to avoid layout shift
   keyboardCloseBtn: {
-    marginHorizontal: 24,
-    marginBottom: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    alignSelf: 'flex-end',
+    marginRight: 24,
+    marginBottom: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    minHeight: 44,
     backgroundColor: '#F0EDE8',
-    borderRadius: 12,
+    borderRadius: 10,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   keyboardCloseBtnText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#555',
     fontWeight: '600',
   },
@@ -433,7 +539,7 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#333',
-    minHeight: 150,
+    minHeight: 130,
     lineHeight: 24,
   },
 
@@ -441,7 +547,7 @@ const styles = StyleSheet.create({
 
   actionWrap: {
     paddingHorizontal: 24,
-    marginTop: 20,
+    marginTop: 16,
     gap: 12,
   },
   primaryBtn: {

@@ -20,6 +20,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "日記の音声入力のためにマイクを使用します。",
+          "speechRecognitionPermission": "日記の音声入力のために音声認識を使用します。"
+        }
+      ]
+    ]
   }
 }
