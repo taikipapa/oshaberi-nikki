@@ -48,20 +48,29 @@ export function useSafeSpeechEvent(eventName: string, handler: Handler) {
 // Returns false → module unavailable (Expo Go) or device not supported
 // Throws { message: 'permission_denied' } → user denied microphone
 export async function startSpeechRecognition(lang = 'ja-JP'): Promise<boolean> {
+  console.log('[SpeechRecognition] startSpeechRecognition called, lang:', lang);
+  console.log('[SpeechRecognition] SpeechModule available:', SpeechModule !== null);
   if (!SpeechModule) return false; // Expo Go
 
   try {
     const available: boolean = SpeechModule.isRecognitionAvailable();
-    if (!available) return false;
+    console.log('[SpeechRecognition] isRecognitionAvailable:', available);
+    if (!available) {
+      console.warn('[SpeechRecognition] recognition not available on this device');
+      return false;
+    }
 
-    const { granted }: { granted: boolean } =
-      await SpeechModule.requestPermissionsAsync();
+    const permResult = await SpeechModule.requestPermissionsAsync();
+    console.log('[SpeechRecognition] permission result:', JSON.stringify(permResult));
+    const { granted } = permResult as { granted: boolean };
     if (!granted) throw { message: 'permission_denied' };
 
+    console.log('[SpeechRecognition] calling start({ lang:', lang, ', interimResults: false })');
     SpeechModule.start({ lang, interimResults: false });
     return true;
   } catch (e: unknown) {
     if ((e as { message?: string })?.message === 'permission_denied') throw e;
+    console.warn('[SpeechRecognition] unexpected error in startSpeechRecognition:', e);
     return false;
   }
 }
@@ -70,3 +79,7 @@ export function stopSpeechRecognition() {
   if (!SpeechModule) return; // Expo Go
   try { SpeechModule.stop(); } catch {}
 }
+
+// Alias with an explicit "safe" name — never throws, no-ops in Expo Go.
+// Use this for auto-stop timers where the module state is uncertain.
+export const stopSpeechRecognitionSafe = stopSpeechRecognition;

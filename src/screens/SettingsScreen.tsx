@@ -1,17 +1,122 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 import ScreenLayout from '../components/ScreenLayout';
+import {
+  getAppSettings,
+  updateAppSettings,
+  AppSettings,
+  InputMethod,
+} from '../storage/settingsStorage';
 
 const APP_VERSION = '0.1.0';
 
+const DEFAULT_SETTINGS: AppSettings = {
+  scoreInputMethod: 'voice',
+  contentInputMethod: 'voice',
+};
+
 export default function SettingsScreen() {
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+
+  useEffect(() => {
+    getAppSettings().then(setSettings);
+  }, []);
+
+  async function handleSet(key: keyof AppSettings, value: InputMethod) {
+    const updated = await updateAppSettings({ [key]: value });
+    setSettings(updated);
+  }
+
   return (
     <ScreenLayout scrollable showAd={false}>
       <View style={styles.header}>
         <Text style={styles.title}>設定</Text>
       </View>
 
+      {/* ── 点数の入力方法 ── */}
+      <View style={styles.inputSection}>
+        <Text style={styles.sectionLabel}>点数の入力方法</Text>
+        <View style={styles.segmentRow}>
+          <TouchableOpacity
+            style={[
+              styles.segmentBtn,
+              settings.scoreInputMethod === 'voice' && styles.segmentBtnActive,
+            ]}
+            onPress={() => handleSet('scoreInputMethod', 'voice')}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                settings.scoreInputMethod === 'voice' && styles.segmentTextActive,
+              ]}
+            >
+              🎤 音声で入力
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.segmentBtn,
+              settings.scoreInputMethod === 'manual' && styles.segmentBtnActive,
+            ]}
+            onPress={() => handleSet('scoreInputMethod', 'manual')}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                settings.scoreInputMethod === 'manual' && styles.segmentTextActive,
+              ]}
+            >
+              🔢 数字で入力
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── 日記内容の入力方法 ── */}
+      <View style={styles.inputSection}>
+        <Text style={styles.sectionLabel}>日記内容の入力方法</Text>
+        <View style={styles.segmentRow}>
+          <TouchableOpacity
+            style={[
+              styles.segmentBtn,
+              settings.contentInputMethod === 'voice' && styles.segmentBtnActive,
+            ]}
+            onPress={() => handleSet('contentInputMethod', 'voice')}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                settings.contentInputMethod === 'voice' && styles.segmentTextActive,
+              ]}
+            >
+              🎤 音声で入力
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.segmentBtn,
+              settings.contentInputMethod === 'manual' && styles.segmentBtnActive,
+            ]}
+            onPress={() => handleSet('contentInputMethod', 'manual')}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                settings.contentInputMethod === 'manual' && styles.segmentTextActive,
+              ]}
+            >
+              ✏️ 文字で入力
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── アプリ情報 ── */}
       <View style={styles.section}>
         <View style={styles.row}>
           <Text style={styles.rowLabel}>アプリ名</Text>
@@ -21,16 +126,6 @@ export default function SettingsScreen() {
         <View style={styles.row}>
           <Text style={styles.rowLabel}>バージョン</Text>
           <Text style={styles.rowValue}>{APP_VERSION}</Text>
-        </View>
-      </View>
-
-      <View style={styles.noticeSection}>
-        <Text style={styles.noticeTitle}>今後の予定</Text>
-        <View style={styles.noticeCard}>
-          <Text style={styles.noticeItem}>🎤 音声入力は今後実装予定</Text>
-          <Text style={styles.noticeItem}>📢 広告は今後実装予定</Text>
-          <Text style={styles.noticeItem}>🌟 追加キャラクターは今後実装予定</Text>
-          <Text style={styles.noticeItem}>☁️ クラウド同期は今後実装予定</Text>
         </View>
       </View>
 
@@ -58,6 +153,48 @@ const styles = StyleSheet.create({
     color: '#5C4A2A',
     textAlign: 'center',
   },
+
+  // ── Input method sections ──────────────────────────────────
+
+  inputSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    gap: 10,
+  },
+  sectionLabel: {
+    fontSize: 13,
+    color: '#AAA',
+    fontWeight: '600',
+    paddingLeft: 4,
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E0D8CC',
+  },
+  segmentBtnActive: {
+    backgroundColor: '#F5A623',
+    borderColor: '#F5A623',
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#AAA',
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // ── App info ───────────────────────────────────────────────
+
   section: {
     marginHorizontal: 20,
     backgroundColor: '#FFFFFF',
@@ -90,11 +227,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0EDE8',
     marginHorizontal: 16,
   },
-  noticeSection: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    gap: 10,
-  },
   dataSection: {
     marginHorizontal: 20,
     marginBottom: 24,
@@ -110,14 +242,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 16,
-    gap: 10,
     borderWidth: 1,
     borderColor: '#F0EDE8',
-  },
-  noticeItem: {
-    fontSize: 15,
-    color: '#555',
-    lineHeight: 22,
   },
   noticeText: {
     fontSize: 14,

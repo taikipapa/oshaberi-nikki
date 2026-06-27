@@ -7,11 +7,16 @@ import {
   StyleSheet,
   Alert,
   Keyboard,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ScreenLayout from '../components/ScreenLayout';
+import CharacterAvatar from '../components/CharacterAvatar';
 import CharacterBubble from '../components/CharacterBubble';
 import { RootStackParamList } from '../navigation/types';
 import { DEFAULT_CHARACTER_ID } from '../constants/characters';
@@ -32,7 +37,7 @@ import {
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteType = RouteProp<RootStackParamList, 'DiaryFlow'>;
 
-type Step = 'score' | 'reaction' | 'content';
+type Step = 'score' | 'reaction';
 
 function scoreBg(score: number) {
   if (score >= 80) return { backgroundColor: '#4CAF82' };
@@ -47,6 +52,7 @@ export default function DiaryFlowScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
   const { targetDate } = route.params;
+  const insets = useSafeAreaInsets();
 
   const isYesterday = targetDate !== toDateString(new Date());
 
@@ -66,15 +72,14 @@ export default function DiaryFlowScreen() {
   const [scoreText, setScoreText] = useState('');
   const [reactionMessage, setReactionMessage] = useState('');
   const [content, setContent] = useState('');
-  const [isContentFocused, setIsContentFocused] = useState(false);
+  const [showContentModal, setShowContentModal] = useState(false);
   const contentRef = useRef<TextInput>(null);
 
-  // Voice input state
   const [isListening, setIsListening] = useState(false);
-  // Ref (not state) so event callbacks always read current target without stale closure
   const voiceTargetRef = useRef<'score' | 'content' | null>(null);
 
-  // Register speech recognition events safely (no-ops in Expo Go)
+  const bubbleMessage = step === 'score' ? scoreQuestion : reactionMessage;
+
   useSafeSpeechEvent('start', () => setIsListening(true));
   useSafeSpeechEvent('end', () => setIsListening(false));
   useSafeSpeechEvent('result', (event) => {
@@ -82,7 +87,6 @@ export default function DiaryFlowScreen() {
     const transcript: string = event.results[0]?.transcript ?? '';
     const target = voiceTargetRef.current;
     voiceTargetRef.current = null;
-
     if (target === 'score') {
       const parsed = parseJapaneseScore(transcript);
       if (parsed !== null) {
@@ -168,261 +172,239 @@ export default function DiaryFlowScreen() {
     setStep('reaction');
   }
 
-  function handleProceedToContent() {
-    setStep('content');
-    setTimeout(() => contentRef.current?.focus(), 300);
-  }
-
   function goToConfirm(body: string) {
+    setShowContentModal(false);
     Keyboard.dismiss();
-    navigation.navigate('DiaryConfirm', {
-      targetDate,
-      score,
-      content: body.trim(),
-    });
+    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim() });
   }
-
-  // Score and reaction steps use a plain (non-scrolling) layout so the
-  // content fits stably on one screen with no bounce. Content step uses
-  // scrollable so automaticallyAdjustKeyboardInsets can shift content up.
-  const scrollable = step === 'content';
 
   return (
-    <ScreenLayout scrollable={scrollable}>
-      <View style={styles.header}>
-        <Text style={styles.diaryTitle}>{diaryInfo.title}</Text>
-        {diaryInfo.sub !== null && (
-          <Text style={styles.diarySub}>{diaryInfo.sub}</Text>
-        )}
-      </View>
+    <>
+      <ScreenLayout scrollable={false}>
 
-      {/* ── Step 1: Score input ── */}
-      {step === 'score' && (
-        <View style={styles.scoreSection}>
+        {/* ── Shared character header — same visual on every step ── */}
+        <View style={styles.charHeader}>
+          <Text style={styles.screenTitle}>{diaryInfo.title}</Text>
+          {diaryInfo.sub !== null && (
+            <Text style={styles.screenSubTitle}>{diaryInfo.sub}</Text>
+          )}
+          <View style={styles.avatarWrap}>
+            <CharacterAvatar characterId={DEFAULT_CHARACTER_ID} size={100} />
+            <Text style={styles.charName}>ハナ</Text>
+          </View>
           <CharacterBubble
-            message={scoreQuestion}
+            message={bubbleMessage}
             characterId={DEFAULT_CHARACTER_ID}
+            showAvatar={false}
           />
+        </View>
 
-          <TouchableOpacity
-            style={[styles.voicePrimaryBtn, isListening && styles.voicePrimaryBtnActive]}
-            onPress={handleVoiceScore}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.voicePrimaryIcon}>{isListening ? '⏹' : '🎤'}</Text>
-            <Text style={styles.voicePrimaryText}>
-              {isListening ? '認識中… タップで止める' : '点数を声で入力する'}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.orRow}>
-            <View style={styles.orLine} />
-            <Text style={styles.orText}>または</Text>
-            <View style={styles.orLine} />
-          </View>
-
-          <View style={styles.numericArea}>
-            <Text style={styles.numericLabel}>数字で入力</Text>
-            <TextInput
-              style={styles.numericInput}
-              keyboardType="number-pad"
-              placeholder="0〜100"
-              placeholderTextColor="#CCC"
-              value={scoreText}
-              onChangeText={(t) => setScoreText(t.replace(/[^0-9]/g, ''))}
-              maxLength={3}
-              returnKeyType="done"
-              onSubmitEditing={handleScoreOK}
-              selectTextOnFocus
-            />
-          </View>
-
-          <View style={styles.actionWrap}>
+        {/* ── Step 1: Score input ── */}
+        {step === 'score' && (
+          <View style={styles.scoreBody}>
             <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={handleScoreOK}
+              style={[styles.voicePrimaryBtn, isListening && styles.voicePrimaryBtnActive]}
+              onPress={handleVoiceScore}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryBtnText}>OK</Text>
+              <Text style={styles.voicePrimaryIcon}>{isListening ? '⏹' : '🎤'}</Text>
+              <Text style={styles.voicePrimaryText}>
+                {isListening ? '認識中… タップで止める' : '点数を声で入力する'}
+              </Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
-      {/* ── Step 2: Character reaction ── */}
-      {step === 'reaction' && (
-        <View style={styles.section}>
-          <View style={styles.scoreBadgeWrap}>
-            <View style={[styles.scoreBadge, scoreBg(score)]}>
-              <Text style={styles.scoreBadgeText}>{score}点</Text>
+            <View style={styles.orRow}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>または</Text>
+              <View style={styles.orLine} />
+            </View>
+
+            <View style={styles.numericArea}>
+              <Text style={styles.numericLabel}>数字で入力</Text>
+              <TextInput
+                style={styles.numericInput}
+                keyboardType="number-pad"
+                placeholder="0〜100"
+                placeholderTextColor="#CCC"
+                value={scoreText}
+                onChangeText={(t) => setScoreText(t.replace(/[^0-9]/g, ''))}
+                maxLength={3}
+                returnKeyType="done"
+                onSubmitEditing={handleScoreOK}
+                selectTextOnFocus
+              />
+            </View>
+
+            <View style={styles.scoreOkWrap}>
+              <TouchableOpacity
+                style={styles.scoreOkBtn}
+                onPress={handleScoreOK}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.scoreOkBtnText}>OK</Text>
+              </TouchableOpacity>
             </View>
           </View>
+        )}
 
-          <CharacterBubble
-            message={reactionMessage}
-            characterId={DEFAULT_CHARACTER_ID}
-          />
+        {/* ── Step 2: Reaction ── */}
+        {step === 'reaction' && (
+          <View style={styles.reactionBody}>
+            <View style={styles.scoreBigWrap}>
+              <View style={[styles.scoreBig, scoreBg(score)]}>
+                <Text style={styles.scoreBigText}>{score}点</Text>
+              </View>
+              <Text style={styles.scoreOnlyHint}>点数だけでも大丈夫</Text>
+            </View>
 
-          <Text style={styles.scoreOnlyHint}>今日は点数だけでも大丈夫</Text>
-
-          <View style={styles.actionWrap}>
             <TouchableOpacity
-              style={styles.primaryBtn}
+              style={styles.reactionOkBtn}
               onPress={() => goToConfirm('')}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryBtnText}>OK</Text>
+              <Text style={styles.reactionOkBtnText}>OK</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.secondaryBtn}
-              onPress={handleProceedToContent}
+              style={styles.reactionSecBtn}
+              onPress={() => setShowContentModal(true)}
               activeOpacity={0.8}
             >
-              <Text style={styles.secondaryBtnText}>内容も書く</Text>
+              <Text style={styles.reactionSecBtnText}>内容も書く</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.backLink}
-              onPress={() => setStep('score')}
-            >
+            <TouchableOpacity style={styles.backLink} onPress={() => setStep('score')}>
               <Text style={styles.backLinkText}>点数を変える</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      )}
+        )}
 
-      {/* ── Step 3: Content (optional) ── */}
-      {step === 'content' && (
-        <View style={styles.section}>
-          <CharacterBubble
-            message={contentQuestion}
-            characterId={DEFAULT_CHARACTER_ID}
+      </ScreenLayout>
+
+      {/* ── Content input modal — panel slides up above keyboard, character scene stays fixed ── */}
+      <Modal
+        visible={showContentModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowContentModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalKAV}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowContentModal(false)}
           />
 
-          <Text style={styles.optionalHint}>
-            書きたいことがあれば、少し残しておこう。{'\n'}空でも保存できます。
-          </Text>
+          <View style={[styles.contentPanel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <Text style={styles.panelPrompt}>{contentQuestion}</Text>
 
-          <TouchableOpacity
-            style={[styles.voiceContentBtn, isListening && styles.voiceContentBtnActive]}
-            onPress={handleVoiceContent}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.voiceContentBtnText}>
-              {isListening ? '⏹ 認識中… タップで止める' : '🎤 話して入力する'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Compact keyboard close pill — space always reserved, shown only when focused */}
-          <TouchableOpacity
-            style={[
-              styles.keyboardCloseBtn,
-              { opacity: isContentFocused ? 1 : 0 },
-            ]}
-            onPress={() => Keyboard.dismiss()}
-            disabled={!isContentFocused}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.keyboardCloseBtnText}>⌄ キーボードを閉じる</Text>
-          </TouchableOpacity>
-
-          <TextInput
-            ref={contentRef}
-            style={styles.contentInput}
-            multiline
-            placeholder="ここに書く（空でもOK）"
-            placeholderTextColor="#CCC"
-            value={content}
-            onChangeText={setContent}
-            textAlignVertical="top"
-            blurOnSubmit={false}
-            returnKeyType="default"
-            onFocus={() => setIsContentFocused(true)}
-            onBlur={() => setIsContentFocused(false)}
-          />
-
-          <View style={styles.actionWrap}>
             <TouchableOpacity
-              style={styles.primaryBtn}
+              style={[styles.voiceContentBtn, isListening && styles.voiceContentBtnActive]}
+              onPress={handleVoiceContent}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.voiceContentBtnText}>
+                {isListening ? '⏹ 認識中… タップで止める' : '🎤 話して入力する'}
+              </Text>
+            </TouchableOpacity>
+
+            <TextInput
+              ref={contentRef}
+              style={styles.panelInput}
+              multiline
+              autoFocus
+              placeholder="ここに書く（空でもOK）"
+              placeholderTextColor="#CCC"
+              value={content}
+              onChangeText={setContent}
+              textAlignVertical="top"
+              blurOnSubmit={false}
+              returnKeyType="default"
+            />
+
+            <TouchableOpacity
+              style={styles.panelOkBtn}
               onPress={() => goToConfirm(content)}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryBtnText}>この内容でOK</Text>
+              <Text style={styles.panelOkBtnText}>この内容でOK</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.backLink}
-              onPress={() => {
-                Keyboard.dismiss();
-                setStep('reaction');
-              }}
+              style={styles.panelBack}
+              onPress={() => setShowContentModal(false)}
             >
-              <Text style={styles.backLinkText}>戻る</Text>
+              <Text style={styles.panelBackText}>戻る</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      )}
-    </ScreenLayout>
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: 24,
+
+  // ── Shared character header ───────────────────────────────
+
+  charHeader: {
     paddingTop: 12,
-    paddingBottom: 4,
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
   },
-  diaryTitle: {
-    fontSize: 18,
+  screenTitle: {
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#5C4A2A',
+    letterSpacing: 0.5,
   },
-  diarySub: {
+  screenSubTitle: {
+    fontSize: 12,
+    color: '#BBB',
+  },
+  avatarWrap: {
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  charName: {
     fontSize: 13,
-    color: '#AAA',
-  },
-
-  // Score step uses its own style to allow tighter vertical control
-  scoreSection: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingBottom: 24,
-  },
-  section: {
-    paddingBottom: 40,
+    color: '#888',
   },
 
   // ── Score step ──────────────────────────────────────────
 
+  scoreBody: {
+    paddingBottom: 20,
+  },
   voicePrimaryBtn: {
     marginHorizontal: 24,
-    marginTop: 16,
+    marginTop: 14,
     backgroundColor: '#F5A623',
     borderRadius: 16,
-    paddingVertical: 20,
+    paddingVertical: 16,
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   voicePrimaryBtnActive: {
     backgroundColor: '#D4881A',
   },
   voicePrimaryIcon: {
-    fontSize: 30,
+    fontSize: 26,
   },
   voicePrimaryText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-
   orRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 24,
-    marginVertical: 14,
+    marginVertical: 10,
     gap: 10,
   },
   orLine: {
@@ -431,16 +413,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8E0D8',
   },
   orText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#BBB',
   },
-
   numericArea: {
     marginHorizontal: 24,
-    gap: 8,
+    gap: 6,
   },
   numericLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#888',
     fontWeight: '600',
   },
@@ -450,54 +431,110 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E0D8CC',
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 12,
     fontSize: 28,
     fontWeight: 'bold',
     color: '#333',
     textAlign: 'center',
   },
+  scoreOkWrap: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  scoreOkBtn: {
+    alignSelf: 'center',
+    backgroundColor: '#F5A623',
+    borderRadius: 28,
+    paddingVertical: 16,
+    paddingHorizontal: 64,
+    alignItems: 'center',
+  },
+  scoreOkBtnText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
 
   // ── Reaction step ────────────────────────────────────────
 
-  scoreBadgeWrap: {
+  reactionBody: {
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingTop: 10,
+    paddingBottom: 24,
+    gap: 14,
   },
-  scoreBadge: {
-    paddingHorizontal: 28,
-    paddingVertical: 10,
-    borderRadius: 24,
+  scoreBigWrap: {
+    alignItems: 'center',
+    gap: 6,
   },
-  scoreBadgeText: {
-    fontSize: 26,
+  scoreBig: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 28,
+  },
+  scoreBigText: {
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   scoreOnlyHint: {
-    fontSize: 14,
-    color: '#AAA',
-    textAlign: 'center',
-    marginBottom: 4,
-    marginTop: -4,
-  },
-
-  // ── Content step ─────────────────────────────────────────
-
-  optionalHint: {
-    marginHorizontal: 24,
-    marginTop: 4,
-    marginBottom: 12,
     fontSize: 13,
     color: '#AAA',
-    lineHeight: 20,
+  },
+  reactionOkBtn: {
+    backgroundColor: '#F5A623',
+    borderRadius: 28,
+    paddingVertical: 20,
+    paddingHorizontal: 72,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  reactionOkBtnText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  reactionSecBtn: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  reactionSecBtnText: {
+    fontSize: 14,
+    color: '#999',
+  },
+
+  // ── Content modal ─────────────────────────────────────────
+
+  modalKAV: {
+    flex: 1,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  contentPanel: {
+    backgroundColor: '#FFFAF5',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    gap: 12,
+  },
+  panelPrompt: {
+    fontSize: 15,
+    color: '#5C4A2A',
+    fontWeight: '600',
     textAlign: 'center',
+    marginBottom: 4,
   },
   voiceContentBtn: {
-    marginHorizontal: 24,
-    marginBottom: 12,
     backgroundColor: '#FFF3E0',
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#F5C97A',
@@ -507,31 +544,11 @@ const styles = StyleSheet.create({
     borderColor: '#D4881A',
   },
   voiceContentBtnText: {
-    fontSize: 17,
+    fontSize: 16,
     color: '#C47F00',
     fontWeight: '600',
   },
-
-  // Compact pill — right-aligned, space always reserved to avoid layout shift
-  keyboardCloseBtn: {
-    alignSelf: 'flex-end',
-    marginRight: 24,
-    marginBottom: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    minHeight: 44,
-    backgroundColor: '#F0EDE8',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  keyboardCloseBtnText: {
-    fontSize: 15,
-    color: '#555',
-    fontWeight: '600',
-  },
-  contentInput: {
-    marginHorizontal: 24,
+  panelInput: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
@@ -539,40 +556,32 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#333',
-    minHeight: 130,
+    minHeight: 100,
     lineHeight: 24,
   },
-
-  // ── Shared ───────────────────────────────────────────────
-
-  actionWrap: {
-    paddingHorizontal: 24,
-    marginTop: 16,
-    gap: 12,
-  },
-  primaryBtn: {
+  panelOkBtn: {
     backgroundColor: '#F5A623',
-    borderRadius: 14,
-    paddingVertical: 20,
+    borderRadius: 28,
+    paddingVertical: 18,
     alignItems: 'center',
   },
-  primaryBtnText: {
+  panelOkBtnText: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  secondaryBtn: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 16,
+  panelBack: {
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E0D8CC',
+    paddingVertical: 8,
   },
-  secondaryBtnText: {
-    fontSize: 16,
-    color: '#666',
+  panelBackText: {
+    fontSize: 14,
+    color: '#AAA',
+    textDecorationLine: 'underline',
   },
+
+  // ── Shared ───────────────────────────────────────────────
+
   backLink: {
     alignItems: 'center',
     paddingVertical: 8,

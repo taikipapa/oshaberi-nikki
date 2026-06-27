@@ -2,12 +2,19 @@
   "expo": {
     "name": "おしゃべり日記",
     "slug": "oshaberi-nikki",
+    "scheme": "oshaberi-nikki",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "日記の音声入力のために音声認識を使用します。",
+        "NSMicrophoneUsageDescription": "日記の音声入力のためにマイクを使用します。",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.daitaina.oshaberi-nikki"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,12 +23,16 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-dev-client",
       [
         "expo-speech-recognition",
         {
@@ -29,6 +40,12 @@
           "speechRecognitionPermission": "日記の音声入力のために音声認識を使用します。"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "996b5dd5-c5b2-4bd4-b961-27aa54b9ac5f"
+      }
+    },
+    "owner": "daitaina"
   }
 }

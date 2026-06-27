@@ -5,13 +5,14 @@ import CharacterAvatar from './CharacterAvatar';
 interface Props {
   message: string;
   characterId?: string;
+  showAvatar?: boolean;
 }
 
-export default function CharacterBubble({ message, characterId }: Props) {
+export default function CharacterBubble({ message, characterId, showAvatar = true }: Props) {
   return (
     <View style={styles.row}>
-      <CharacterAvatar characterId={characterId} size={56} />
-      <View style={styles.bubble}>
+      {showAvatar && <CharacterAvatar characterId={characterId} size={56} />}
+      <View style={[styles.bubble, !showAvatar && styles.bubbleNoAvatar]}>
         <Text style={styles.text}>{message}</Text>
       </View>
     </View>
@@ -32,6 +33,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderTopLeftRadius: 4,
     padding: 14,
+  },
+  bubbleNoAvatar: {
+    borderTopLeftRadius: 16,
   },
   text: {
     fontSize: 16,
