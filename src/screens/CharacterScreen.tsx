@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -76,6 +77,15 @@ export default function CharacterScreen() {
     } finally {
       savingRef.current = false;
     }
+
+    Alert.alert(
+      `${ch.name}が解放されました！`,
+      'これから話し相手に選べます。',
+      [
+        { text: 'あとで選ぶ', style: 'cancel' },
+        { text: 'このキャラにする', onPress: () => handleSelect(ch.id) },
+      ],
+    );
   }
 
   const sortedCharacters = [...CHARACTERS].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -114,6 +124,7 @@ export default function CharacterScreen() {
                 <Text style={[styles.charDesc, styles.charDescLocked]}>{ch.description}</Text>
 
                 <Text style={styles.lockedLabel}>ロック中</Text>
+                <Text style={styles.lockedHint}>広告を見ると解放できます</Text>
                 <View style={[styles.badge, styles.badgeLocked]}>
                   <Text style={[styles.badgeText, styles.badgeTextLocked]}>
                     {isThisAdLoading ? '広告を準備中…' : '広告を見て解放'}
@@ -238,6 +249,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#BBB',
     fontWeight: '600',
+  },
+  lockedHint: {
+    fontSize: 10,
+    color: '#CCC',
+    textAlign: 'center',
   },
   // Shared badge container — layout dimensions stay identical across states.
   badge: {
