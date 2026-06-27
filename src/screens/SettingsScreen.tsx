@@ -31,7 +31,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScreenLayout scrollable showAd={false}>
+    <ScreenLayout scrollable>
       <View style={styles.header}>
         <Text style={styles.title}>設定</Text>
       </View>

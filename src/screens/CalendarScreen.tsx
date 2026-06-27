@@ -83,7 +83,7 @@ export default function CalendarScreen() {
   }
 
   return (
-    <ScreenLayout showAd={false}>
+    <ScreenLayout>
       <View style={styles.inner}>
         <View style={styles.monthNav}>
           <TouchableOpacity onPress={prevMonth} style={styles.navButton}>

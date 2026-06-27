@@ -91,7 +91,7 @@ export default function CharacterScreen() {
   const sortedCharacters = [...CHARACTERS].sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
-    <ScreenLayout scrollable showAd={false}>
+    <ScreenLayout scrollable>
       <View style={styles.header}>
         <Text style={styles.title}>キャラクター</Text>
         <Text style={styles.subtitle}>話し相手を選んでください</Text>

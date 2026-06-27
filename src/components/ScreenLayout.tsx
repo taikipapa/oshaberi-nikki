@@ -1,18 +1,15 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AdBanner from './AdBanner';
 
 interface Props {
   children: React.ReactNode;
   scrollable?: boolean;
-  showAd?: boolean;
 }
 
 export default function ScreenLayout({
   children,
   scrollable = false,
-  showAd = true,
 }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -29,7 +26,6 @@ export default function ScreenLayout({
         ) : (
           <View style={styles.content}>{children}</View>
         )}
-        {showAd && <AdBanner withBottomInset />}
       </View>
     </SafeAreaView>
   );

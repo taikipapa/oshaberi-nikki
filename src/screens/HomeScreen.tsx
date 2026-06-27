@@ -505,7 +505,7 @@ export default function HomeScreen() {
 
   return (
     <>
-      <ScreenLayout showAd={false} scrollable={scrollable}>
+      <ScreenLayout scrollable={scrollable}>
         <View style={[styles.inner, diaryStep !== 'idle' && styles.innerFlow]}>
 
           {/* ── Fixed top character scene ── */}

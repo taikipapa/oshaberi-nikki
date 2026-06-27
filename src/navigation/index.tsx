@@ -43,10 +43,6 @@ function tabLabel(name: string): string {
   return labels[name] ?? name;
 }
 
-// Layout order from top to bottom:
-//   screen content
-//   ↓ tab bar  (rendered inside Tab.Navigator)
-//   ↓ ad banner (rendered here, below Tab.Navigator)
 function MainTabs() {
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFAF5' }}>
@@ -81,14 +77,15 @@ function MainTabs() {
         <Tab.Screen name="Character" component={CharacterScreen} />
         <Tab.Screen name="Settings" component={SettingsScreen} />
       </Tab.Navigator>
-      {/* Ad banner sits below the tab bar, not inside any screen */}
-      <AdBanner />
     </View>
   );
 }
 
 export default function RootNavigator() {
   return (
+    // Single persistent banner lives here, outside the Stack, so it never
+    // remounts during screen transitions.
+    <View style={{ flex: 1, backgroundColor: '#FFFAF5' }}>
     <Stack.Navigator
       screenOptions={{
         headerStyle: { backgroundColor: '#FFFAF5' },
@@ -124,5 +121,7 @@ export default function RootNavigator() {
         options={{ title: '日記の詳細' }}
       />
     </Stack.Navigator>
+    <AdBanner />
+    </View>
   );
 }
