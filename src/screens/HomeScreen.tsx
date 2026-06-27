@@ -604,17 +604,22 @@ export default function HomeScreen() {
               ) : scoreInputMethod === 'voice' ? (
                 /* ── Voice mode, waiting for score ── */
                 <>
-                  <TouchableOpacity
-                    disabled={listeningMode !== 'none'}
-                    style={[styles.voicePrimaryBtn, listeningMode === 'score' && styles.voicePrimaryBtnActive]}
-                    onPress={handleVoiceScore}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.voicePrimaryIcon}>🎤</Text>
-                    <Text style={styles.voicePrimaryText}>
-                      {listeningMode === 'score' ? '話してください…' : '点数を音声で入力する'}
-                    </Text>
-                  </TouchableOpacity>
+                  {listeningMode === 'score' ? (
+                    <View style={[styles.listeningBox, styles.listeningBoxScore]}>
+                      <Text style={styles.listeningBoxMain}>🎤 聞き取り中…</Text>
+                      <Text style={styles.listeningBoxSub}>点数を話してください（0〜100）</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      disabled={listeningMode !== 'none'}
+                      style={styles.voicePrimaryBtn}
+                      onPress={handleVoiceScore}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.voicePrimaryIcon}>🎤</Text>
+                      <Text style={styles.voicePrimaryText}>点数を音声で入力する</Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={styles.modeSwitchLink}
@@ -681,16 +686,22 @@ export default function HomeScreen() {
 
               {contentInputMethod === 'voice' ? (
                 <>
-                  <TouchableOpacity
-                    disabled={listeningMode !== 'none'}
-                    style={[styles.voiceContentBtn, listeningMode === 'content' && styles.voiceContentBtnActive]}
-                    onPress={handleVoiceContent}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.voiceContentBtnText}>
-                      {listeningMode === 'content' ? '聞き取り中…' : '🎤 話して入力する'}
-                    </Text>
-                  </TouchableOpacity>
+                  {listeningMode === 'content' ? (
+                    <View style={styles.listeningBox}>
+                      <Text style={styles.listeningBoxMain}>🎤 聞き取り中…</Text>
+                      <Text style={styles.listeningBoxSub}>話し終わったら自動で入力されます</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      disabled={listeningMode !== 'none'}
+                      style={styles.voiceContentBtn}
+                      onPress={handleVoiceContent}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.voiceContentIcon}>🎤</Text>
+                      <Text style={styles.voiceContentBtnText}>話して入力する</Text>
+                    </TouchableOpacity>
+                  )}
 
                   {content !== '' && (
                     <View style={styles.contentPreview}>
@@ -712,7 +723,9 @@ export default function HomeScreen() {
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.modeSwitchLinkText}>文字で入力する</Text>
+                    <Text style={styles.modeSwitchLinkText}>
+                      {content !== '' ? '入力された内容を編集する' : '文字で入力する'}
+                    </Text>
                   </TouchableOpacity>
                 </>
               ) : (
@@ -929,9 +942,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  voicePrimaryBtnActive: {
-    backgroundColor: '#D4881A',
-  },
   voicePrimaryIcon: {
     fontSize: 26,
   },
@@ -1097,21 +1107,19 @@ const styles = StyleSheet.create({
   },
 
   voiceContentBtn: {
-    backgroundColor: '#FFF3E0',
-    borderRadius: 14,
-    paddingVertical: 14,
+    backgroundColor: '#F5A623',
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#F5C97A',
+    gap: 4,
   },
-  voiceContentBtnActive: {
-    backgroundColor: '#FFE5B4',
-    borderColor: '#D4881A',
+  voiceContentIcon: {
+    fontSize: 26,
   },
   voiceContentBtnText: {
     fontSize: 16,
-    color: '#C47F00',
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   panelInput: {
     backgroundColor: '#FFFFFF',
@@ -1144,6 +1152,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#BBB',
     textDecorationLine: 'underline',
+  },
+  listeningBox: {
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: '#FFF3CC',
+    borderWidth: 2,
+    borderColor: '#F5A623',
+    alignItems: 'center',
+    gap: 6,
+  },
+  listeningBoxScore: {
+    marginHorizontal: 24,
+    marginTop: 14,
+  },
+  listeningBoxMain: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#C47F00',
+  },
+  listeningBoxSub: {
+    fontSize: 12,
+    color: '#C47F00',
   },
   contentPreview: {
     backgroundColor: '#FFF8EE',

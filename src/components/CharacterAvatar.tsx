@@ -25,6 +25,26 @@ const CHARACTER_IMAGES: Record<string, Record<CharacterExpression, ReturnType<ty
     happy:  require('../../assets/characters/chiyobaa_happy.png'),
     worry:  require('../../assets/characters/chiyobaa_worry.png'),
   },
+  serina: {
+    normal: require('../../assets/characters/serina_normal.png'),
+    happy:  require('../../assets/characters/serina_happy.png'),
+    worry:  require('../../assets/characters/serina_worry.png'),
+  },
+  kaito: {
+    normal: require('../../assets/characters/kaito_normal.png'),
+    happy:  require('../../assets/characters/kaito_happy.png'),
+    worry:  require('../../assets/characters/kaito_worry.png'),
+  },
+  haru: {
+    normal: require('../../assets/characters/haru_normal.png'),
+    happy:  require('../../assets/characters/haru_happy.png'),
+    worry:  require('../../assets/characters/haru_worry.png'),
+  },
+  sakura: {
+    normal: require('../../assets/characters/sakura_normal.png'),
+    happy:  require('../../assets/characters/sakura_happy.png'),
+    worry:  require('../../assets/characters/sakura_worry.png'),
+  },
 };
 
 const LEON_NORMAL = CHARACTER_IMAGES['leon']['normal'];
