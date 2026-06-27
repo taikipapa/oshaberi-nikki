@@ -21,6 +21,7 @@ const AVATAR_HEIGHT = Math.round(88 * 1.3); // 114
 export default function CharacterScreen() {
   const [selectedId, setSelectedId] = useState('leon');
   const [unlockedIds, setUnlockedIds] = useState<string[]>(['leon', 'miria', 'himari', 'chiyobaa']);
+  const [loadingAdCharacterId, setLoadingAdCharacterId] = useState<string | null>(null);
   // Prevents useFocusEffect async read from overwriting state while a write is in flight.
   const savingRef = useRef(false);
 
@@ -52,8 +53,16 @@ export default function CharacterScreen() {
   }
 
   async function handleUnlockPress(ch: Character) {
-    if (savingRef.current) return;
-    const earned = await showRewardedAdForCharacterUnlock(ch.id);
+    if (savingRef.current || loadingAdCharacterId !== null) return;
+
+    setLoadingAdCharacterId(ch.id);
+    let earned = false;
+    try {
+      earned = await showRewardedAdForCharacterUnlock(ch.id);
+    } finally {
+      setLoadingAdCharacterId(null);
+    }
+
     if (!earned) return;
 
     savingRef.current = true;
@@ -84,11 +93,14 @@ export default function CharacterScreen() {
           const isActive = isUnlocked && ch.id === selectedId;
 
           if (!isUnlocked) {
+            const isThisAdLoading = loadingAdCharacterId === ch.id;
+            const anyAdLoading = loadingAdCharacterId !== null;
             return (
               <TouchableOpacity
                 key={ch.id}
                 style={[styles.card, styles.cardLocked]}
                 onPress={() => handleUnlockPress(ch)}
+                disabled={anyAdLoading}
                 activeOpacity={0.85}
               >
                 <View style={styles.lockedAvatarWrap}>
@@ -103,7 +115,9 @@ export default function CharacterScreen() {
 
                 <Text style={styles.lockedLabel}>ロック中</Text>
                 <View style={[styles.badge, styles.badgeLocked]}>
-                  <Text style={[styles.badgeText, styles.badgeTextLocked]}>広告を見て解放</Text>
+                  <Text style={[styles.badgeText, styles.badgeTextLocked]}>
+                    {isThisAdLoading ? '広告を準備中…' : '広告を見て解放'}
+                  </Text>
                 </View>
               </TouchableOpacity>
             );
