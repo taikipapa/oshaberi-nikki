@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   scoreInputMethod: 'voice',
   contentInputMethod: 'voice',
   selectedCharacterId: 'leon',
+  unlockedCharacterIds: ['leon', 'miria', 'himari', 'chiyobaa'],
 };
 
 export default function SettingsScreen() {

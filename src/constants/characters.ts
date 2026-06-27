@@ -2,7 +2,10 @@ import { Character, SpeechSet } from '../types';
 
 export const DEFAULT_CHARACTER_ID = 'leon';
 
-export const SUPPORTED_CHARACTER_IDS = ['leon', 'miria', 'himari', 'chiyobaa'] as const;
+export const SUPPORTED_CHARACTER_IDS = [
+  'leon', 'miria', 'himari', 'chiyobaa',
+  'serina', 'kaito', 'haru', 'sakura',
+] as const;
 export type SupportedCharacterId = (typeof SUPPORTED_CHARACTER_IDS)[number];
 
 export function isSupportedCharacterId(id: string): id is SupportedCharacterId {
@@ -13,30 +16,78 @@ export const CHARACTERS: Character[] = [
   {
     id: 'leon',
     name: 'レオン',
-    isUnlocked: true,
     description: '元気いっぱいで前向きなキャラクター。',
     personalityType: 'cheerful',
+    unlockedByDefault: true,
+    unlockType: 'default',
+    sortOrder: 1,
   },
   {
     id: 'miria',
     name: 'ミリア',
-    isUnlocked: true,
     description: 'やわらかくて温かいキャラクター。',
     personalityType: 'gentle',
+    unlockedByDefault: true,
+    unlockType: 'default',
+    sortOrder: 2,
   },
   {
     id: 'himari',
     name: 'ひまり',
-    isUnlocked: true,
     description: '明るくて好奇心旺盛なキャラクター。',
     personalityType: 'cheerful',
+    unlockedByDefault: true,
+    unlockType: 'default',
+    sortOrder: 3,
   },
   {
     id: 'chiyobaa',
     name: '千代ばあ',
-    isUnlocked: true,
     description: 'おっとりしていて包容力のあるキャラクター。',
     personalityType: 'gentle',
+    unlockedByDefault: true,
+    unlockType: 'default',
+    sortOrder: 4,
+  },
+  {
+    id: 'serina',
+    name: 'セリナ',
+    description: 'ミステリアスで知的なキャラクター。',
+    personalityType: 'cool',
+    unlockedByDefault: false,
+    unlockType: 'reward_ad',
+    sortOrder: 5,
+    lockedDescription: '広告を見て解放しよう！',
+  },
+  {
+    id: 'kaito',
+    name: 'カイト',
+    description: 'クールで頼れるキャラクター。',
+    personalityType: 'cool',
+    unlockedByDefault: false,
+    unlockType: 'reward_ad',
+    sortOrder: 6,
+    lockedDescription: '広告を見て解放しよう！',
+  },
+  {
+    id: 'haru',
+    name: 'ハル',
+    description: 'のんびりやわらかいキャラクター。',
+    personalityType: 'gentle',
+    unlockedByDefault: false,
+    unlockType: 'reward_ad',
+    sortOrder: 7,
+    lockedDescription: '広告を見て解放しよう！',
+  },
+  {
+    id: 'sakura',
+    name: 'さくら',
+    description: 'はなやかで元気なキャラクター。',
+    personalityType: 'cheerful',
+    unlockedByDefault: false,
+    unlockType: 'reward_ad',
+    sortOrder: 8,
+    lockedDescription: '広告を見て解放しよう！',
   },
 ];
 

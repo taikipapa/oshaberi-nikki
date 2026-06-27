@@ -12,9 +12,12 @@ export interface DiaryEntry {
 export interface Character {
   id: string;
   name: string;
-  isUnlocked: boolean;
   description: string;
   personalityType: string;
+  unlockedByDefault: boolean;
+  unlockType: 'default' | 'reward_ad';
+  sortOrder: number;
+  lockedDescription?: string;
 }
 
 export interface SpeechSet {
