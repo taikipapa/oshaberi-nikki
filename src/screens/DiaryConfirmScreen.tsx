@@ -10,11 +10,12 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenLayout from '../components/ScreenLayout';
+import CharacterAvatar from '../components/CharacterAvatar';
 import CharacterBubble from '../components/CharacterBubble';
 import { RootStackParamList } from '../navigation/types';
-import { DEFAULT_CHARACTER_ID } from '../constants/characters';
+import { CHARACTERS } from '../constants/characters';
 import { getDiaryDateInfo } from '../utils/dateUtils';
-import { getScoreReaction, getSaveCompleteMessage } from '../utils/speech';
+import { getScoreReaction } from '../utils/speech';
 import { saveDiaryEntry } from '../storage/diaryStorage';
 import { pendingResumeRef } from '../utils/diaryEditState';
 import { DiaryEntry } from '../types';
@@ -29,11 +30,12 @@ function generateId(): string {
 export default function DiaryConfirmScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { targetDate, score, content } = route.params;
+  const { targetDate, score, content, characterId } = route.params;
 
   const [saving, setSaving] = useState(false);
   const diaryInfo = getDiaryDateInfo(targetDate);
-  const characterComment = getScoreReaction(score, DEFAULT_CHARACTER_ID);
+  const characterComment = getScoreReaction(score, characterId);
+  const characterName = CHARACTERS.find((c) => c.id === characterId)?.name ?? characterId;
 
   async function handleSave() {
     setSaving(true);
@@ -44,13 +46,13 @@ export default function DiaryConfirmScreen() {
         targetDate,
         score,
         content,
-        characterId: DEFAULT_CHARACTER_ID,
+        characterId,
         characterComment,
         createdAt: now,
         updatedAt: now,
       };
       await saveDiaryEntry(entry);
-      navigation.navigate('SaveComplete', { targetDate });
+      navigation.navigate('SaveComplete', { targetDate, characterId });
     } catch {
       Alert.alert('エラー', '保存できませんでした。もう一度試してください。');
     } finally {
@@ -59,16 +61,22 @@ export default function DiaryConfirmScreen() {
   }
 
   function handleBack() {
-    // Signal HomeScreen to restore content editing rather than resetting to idle.
     pendingResumeRef.current = { targetDate, score, content, characterComment };
     navigation.goBack();
   }
 
   return (
     <ScreenLayout scrollable>
-      <View style={styles.header}>
-        <Text style={styles.title}>日記の確認</Text>
+      <View style={styles.avatarWrap}>
+        <CharacterAvatar characterId={characterId} size={155} bust />
+        <Text style={styles.characterName}>{characterName}</Text>
       </View>
+
+      <CharacterBubble
+        message={characterComment}
+        characterId={characterId}
+        showAvatar={false}
+      />
 
       <View style={styles.card}>
         <View style={styles.row}>
@@ -100,11 +108,6 @@ export default function DiaryConfirmScreen() {
         </View>
       </View>
 
-      <CharacterBubble
-        message={characterComment}
-        characterId={DEFAULT_CHARACTER_ID}
-      />
-
       <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.primaryButton, saving && styles.disabled]}
@@ -120,7 +123,7 @@ export default function DiaryConfirmScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.secondaryButton}
+          style={[styles.secondaryButton, saving && styles.disabled]}
           onPress={handleBack}
           disabled={saving}
           activeOpacity={0.8}
@@ -139,23 +142,22 @@ function scoreBadgeColor(score: number) {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 12,
+  avatarWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    marginBottom: 2,
+    gap: 6,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#5C4A2A',
-    textAlign: 'center',
+  characterName: {
+    fontSize: 14,
+    color: '#888',
   },
   card: {
     marginHorizontal: 20,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 8,
+    padding: 16,
+    marginBottom: 4,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -216,9 +218,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 24,
-    gap: 14,
+    paddingTop: 4,
+    paddingBottom: 12,
+    gap: 12,
   },
   primaryButton: {
     alignSelf: 'center',
@@ -236,6 +238,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignSelf: 'center',
+    backgroundColor: '#FFFAF5',
     borderWidth: 1,
     borderColor: '#DDD',
     borderRadius: 20,

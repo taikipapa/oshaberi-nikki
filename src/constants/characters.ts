@@ -1,18 +1,60 @@
 import { Character, SpeechSet } from '../types';
 
-export const DEFAULT_CHARACTER_ID = 'hana';
+export const DEFAULT_CHARACTER_ID = 'leon';
+
+export const SUPPORTED_CHARACTER_IDS = ['leon', 'miria', 'himari', 'chiyobaa'] as const;
+export type SupportedCharacterId = (typeof SUPPORTED_CHARACTER_IDS)[number];
+
+export function isSupportedCharacterId(id: string): id is SupportedCharacterId {
+  return (SUPPORTED_CHARACTER_IDS as readonly string[]).includes(id);
+}
 
 export const CHARACTERS: Character[] = [
   {
-    id: 'hana',
-    name: 'ハナ',
+    id: 'leon',
+    name: 'レオン',
     isUnlocked: true,
-    description: 'やさしくて、いつもそばにいてくれる聴き上手なキャラクター。',
+    description: '元気いっぱいで前向きなキャラクター。',
+    personalityType: 'cheerful',
+  },
+  {
+    id: 'miria',
+    name: 'ミリア',
+    isUnlocked: true,
+    description: 'やわらかくて温かいキャラクター。',
+    personalityType: 'gentle',
+  },
+  {
+    id: 'himari',
+    name: 'ひまり',
+    isUnlocked: true,
+    description: '明るくて好奇心旺盛なキャラクター。',
+    personalityType: 'cheerful',
+  },
+  {
+    id: 'chiyobaa',
+    name: '千代ばあ',
+    isUnlocked: true,
+    description: 'おっとりしていて包容力のあるキャラクター。',
     personalityType: 'gentle',
   },
 ];
 
 export const SPEECH_SETS: Record<string, SpeechSet> = {
+  leon: {
+    morningGreetings: ['今日も来てくれてうれしいよ。'],
+    afternoonComments: ['今日も来てくれてうれしいよ。'],
+    nightGreetings: ['今日も来てくれてうれしいよ。'],
+    askTodayScore: ['今日は何点くらいの日だった？'],
+    askYesterdayScore: ['昨日は何点くらいの日だった？'],
+    highScoreReactions: ['すごい！いい日だったんだね。どんなことがあったの？'],
+    normalScoreReactions: ['まあまあの日だったんだね。どんな一日だった？'],
+    lowScoreReactions: ['そっか。ゆっくり話してね。'],
+    askContent: ['どんなことがあったか、教えてほしいな。'],
+    saveCompleteMessages: ['話してくれてありがとう。日記として残しておくね。'],
+    idleComments: ['今日も来てくれてうれしいよ。'],
+    alreadyWrittenComments: ['今日の日記、ちゃんと残せてるよ。おつかれさま。'],
+  },
   hana: {
     morningGreetings: [
       'おはよう。昨日の日記、まだ書いてないみたい。昨日はどんな日だった？',

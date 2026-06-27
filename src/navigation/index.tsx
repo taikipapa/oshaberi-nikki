@@ -111,7 +111,7 @@ export default function RootNavigator() {
       <Stack.Screen
         name="DiaryConfirm"
         component={DiaryConfirmScreen}
-        options={{ title: '確認' }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="SaveComplete"

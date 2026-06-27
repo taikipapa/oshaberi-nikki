@@ -1,51 +1,82 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import ScreenLayout from '../components/ScreenLayout';
 import CharacterAvatar from '../components/CharacterAvatar';
 import { CHARACTERS } from '../constants/characters';
+import { getAppSettings, updateAppSettings } from '../storage/settingsStorage';
 
 export default function CharacterScreen() {
-  const defaultChar = CHARACTERS[0];
+  const [selectedId, setSelectedId] = useState('leon');
+  // savingRef prevents the useFocusEffect's async settings read from overwriting
+  // selectedId while a write is in flight.
+  const savingRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getAppSettings().then((s) => {
+        // Skip if a save started after this read began — handleSelect already
+        // updated selectedId optimistically and the storage has the new value.
+        if (active && !savingRef.current) setSelectedId(s.selectedCharacterId);
+      });
+      return () => { active = false; };
+    }, []),
+  );
+
+  async function handleSelect(id: string) {
+    if (id === selectedId || savingRef.current) return;
+    savingRef.current = true;
+    // Optimistic update: renders the new selection immediately with no intermediate state.
+    setSelectedId(id);
+    try {
+      await updateAppSettings({ selectedCharacterId: id });
+    } catch {
+      // Storage write failed — revert to persisted value.
+      const s = await getAppSettings();
+      setSelectedId(s.selectedCharacterId);
+    } finally {
+      savingRef.current = false;
+    }
+  }
 
   return (
     <ScreenLayout scrollable showAd={false}>
       <View style={styles.header}>
         <Text style={styles.title}>キャラクター</Text>
+        <Text style={styles.subtitle}>話し相手を選んでください</Text>
       </View>
 
-      <View style={styles.selected}>
-        <CharacterAvatar characterId={defaultChar.id} size={96} />
-        <Text style={styles.charName}>{defaultChar.name}</Text>
-        <View style={styles.activeTag}>
-          <Text style={styles.activeTagText}>使用中</Text>
-        </View>
-        <Text style={styles.charDescription}>{defaultChar.description}</Text>
-      </View>
+      <View style={styles.grid}>
+        {CHARACTERS.map((ch) => {
+          const isActive = ch.id === selectedId;
+          return (
+            <TouchableOpacity
+              key={ch.id}
+              style={[styles.card, isActive && styles.cardActive]}
+              onPress={() => handleSelect(ch.id)}
+              disabled={isActive}
+              activeOpacity={0.85}
+            >
+              <CharacterAvatar characterId={ch.id} size={88} bust />
+              <Text style={styles.charName}>{ch.name}</Text>
+              <Text style={styles.charDesc}>{ch.description}</Text>
 
-      <View style={styles.divider} />
-
-      <View style={styles.lockedSection}>
-        <Text style={styles.lockedTitle}>今後追加予定</Text>
-        {[1, 2, 3].map((i) => (
-          <View key={i} style={styles.lockedCard}>
-            <View style={styles.lockedAvatar}>
-              <Text style={styles.lockedAvatarText}>?</Text>
-            </View>
-            <View style={styles.lockedInfo}>
-              <Text style={styles.lockedName}>???</Text>
-              <View style={styles.lockBadge}>
-                <Text style={styles.lockBadgeText}>🔒 近日公開</Text>
+              {/* Badge: identical container dimensions in both states — only colors change. */}
+              <View style={[styles.badge, isActive ? styles.badgeActive : styles.badgeInactive]}>
+                <Text style={[styles.badgeText, isActive && styles.badgeTextActive]}>
+                  {isActive ? '使用中' : '選ぶ'}
+                </Text>
               </View>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.notice}>
-        <Text style={styles.noticeText}>
-          今後、キャラクターを追加予定です
-        </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </ScreenLayout>
   );
@@ -55,7 +86,8 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 12,
+    paddingBottom: 16,
+    gap: 4,
   },
   title: {
     fontSize: 20,
@@ -63,102 +95,73 @@ const styles = StyleSheet.create({
     color: '#5C4A2A',
     textAlign: 'center',
   },
-  selected: {
+  subtitle: {
+    fontSize: 13,
+    color: '#AAA',
+    textAlign: 'center',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    gap: 12,
+    justifyContent: 'center',
+  },
+  card: {
+    width: 155,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
     alignItems: 'center',
-    paddingVertical: 24,
-    gap: 10,
+    gap: 8,
+    borderWidth: 2,
+    borderColor: '#F0EDE8',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  cardActive: {
+    borderColor: '#F5A623',
+    backgroundColor: '#FFFAF5',
   },
   charName: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
   },
-  activeTag: {
-    backgroundColor: '#4CAF82',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-  },
-  activeTagText: {
-    color: '#FFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  charDescription: {
-    fontSize: 15,
-    color: '#888',
-    textAlign: 'center',
-    paddingHorizontal: 32,
-    lineHeight: 22,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F0EDE8',
-    marginHorizontal: 24,
-    marginBottom: 24,
-  },
-  lockedSection: {
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 12,
-  },
-  lockedTitle: {
-    fontSize: 14,
+  charDesc: {
+    fontSize: 12,
     color: '#AAA',
-    fontWeight: '600',
-    marginBottom: 4,
+    textAlign: 'center',
+    lineHeight: 18,
   },
-  lockedCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    gap: 14,
-    borderWidth: 1,
-    borderColor: '#F0EDE8',
-  },
-  lockedAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#E0D8CC',
+  // Shared badge container — all layout properties are identical in both states.
+  badge: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    marginTop: 4,
+    minWidth: 80,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  lockedAvatarText: {
-    fontSize: 22,
-    color: '#AAA',
+  badgeActive: {
+    backgroundColor: '#F5A623',
+    borderColor: '#F5A623',
   },
-  lockedInfo: {
-    gap: 6,
+  badgeInactive: {
+    backgroundColor: 'transparent',
+    borderColor: '#F5A623',
   },
-  lockedName: {
-    fontSize: 16,
-    color: '#CCC',
+  badgeText: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#F5A623',
   },
-  lockBadge: {
-    backgroundColor: '#F5F0EA',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-  },
-  lockBadgeText: {
-    fontSize: 12,
-    color: '#AAA',
-  },
-  notice: {
-    margin: 24,
-    backgroundColor: '#FFF3E0',
-    borderRadius: 12,
-    padding: 16,
-  },
-  noticeText: {
-    fontSize: 14,
-    color: '#C47F00',
-    textAlign: 'center',
-    lineHeight: 20,
+  badgeTextActive: {
+    color: '#FFFFFF',
   },
 });

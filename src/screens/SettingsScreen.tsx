@@ -14,6 +14,7 @@ const APP_VERSION = '0.1.0';
 const DEFAULT_SETTINGS: AppSettings = {
   scoreInputMethod: 'voice',
   contentInputMethod: 'voice',
+  selectedCharacterId: 'leon',
 };
 
 export default function SettingsScreen() {

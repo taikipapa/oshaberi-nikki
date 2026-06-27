@@ -175,7 +175,7 @@ export default function DiaryFlowScreen() {
   function goToConfirm(body: string) {
     setShowContentModal(false);
     Keyboard.dismiss();
-    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim() });
+    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim(), characterId: 'leon' });
   }
 
   return (

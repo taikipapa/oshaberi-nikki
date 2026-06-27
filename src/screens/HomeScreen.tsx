@@ -13,8 +13,6 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import ScreenLayout from '../components/ScreenLayout';
 import CharacterAvatar from '../components/CharacterAvatar';
 import CharacterBubble from '../components/CharacterBubble';
@@ -33,9 +31,8 @@ import {
   getAskTodayScore,
   getAskYesterdayScore,
   getScoreReaction,
-  getAskContent,
 } from '../utils/speech';
-import { DEFAULT_CHARACTER_ID } from '../constants/characters';
+import { CHARACTERS } from '../constants/characters';
 import { RootStackParamList } from '../navigation/types';
 import { parseJapaneseScore } from '../utils/japaneseNumber';
 import {
@@ -46,6 +43,7 @@ import {
 } from '../utils/speechRecognition';
 import {
   getAppSettings,
+  updateAppSettings,
   InputMethod,
 } from '../storage/settingsStorage';
 import { voiceActiveRef } from '../utils/voiceState';
@@ -55,6 +53,11 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 type HomeDiaryStep = 'idle' | 'score' | 'reaction';
 type ListeningMode = 'none' | 'score' | 'content';
+type IdleMessageType = 'morning' | 'daytime' | 'night' | 'alreadyWritten';
+
+function getCharacterName(id: string): string {
+  return CHARACTERS.find((c) => c.id === id)?.name ?? id;
+}
 
 function scoreBg(score: number) {
   if (score >= 80) return { backgroundColor: '#4CAF82' };
@@ -90,7 +93,6 @@ function extractTranscript(event: any): string {
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
-  const insets = useSafeAreaInsets();
 
   // ── Idle greeting state ──
   const [idleMessage, setIdleMessage] = useState('');
@@ -101,18 +103,30 @@ export default function HomeScreen() {
   const [diaryStep, setDiaryStep] = useState<HomeDiaryStep>('idle');
   const [score, setScore] = useState(0);
   const [scoreText, setScoreText] = useState('');
+  const [scoreEntered, setScoreEntered] = useState(false); // true once a score has been confirmed
   const [reactionMessage, setReactionMessage] = useState('');
   const [content, setContent] = useState('');
-  const [showContentModal, setShowContentModal] = useState(false);
   const contentRef = useRef<TextInput>(null);
 
   // ── Voice input ──
   const [listeningMode, setListeningMode] = useState<ListeningMode>('none');
   const scoreAutoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Records when stopSpeechRecognition() was called intentionally (mode switch / cancel).
+  // Any error/nomatch event within 2 s of this timestamp is silently discarded.
+  const intentionalStopTimeRef = useRef(0);
 
   // ── Input method settings ──
   const [scoreInputMethod, setScoreInputMethod] = useState<InputMethod>('voice');
   const [contentInputMethod, setContentInputMethod] = useState<InputMethod>('voice');
+
+  // ── Score numeric popup modal ──
+  const [showScoreModal, setShowScoreModal] = useState(false);
+  const [scoreModalText, setScoreModalText] = useState('');
+
+  // ── Selected character (loaded from settings, persisted by CharacterScreen) ──
+  const [selectedCharacterId, setSelectedCharacterId] = useState('leon');
+  const selectedCharacterRef = useRef('leon');
+  const [idleMessageType, setIdleMessageType] = useState<IdleMessageType | null>(null);
 
   function clearScoreAutoStop() {
     if (scoreAutoStopRef.current !== null) {
@@ -121,27 +135,52 @@ export default function HomeScreen() {
     }
   }
 
+  // Stops recognition for an intentional user action (mode switch, cancel).
+  // Stamps a timestamp so the subsequent error/nomatch event is silently discarded.
+  function stopVoiceIntentionally() {
+    intentionalStopTimeRef.current = Date.now();
+    stopSpeechRecognition();
+  }
+
   // Keep the module-level ref in sync so the Tab Navigator can block tab presses.
   useEffect(() => {
     voiceActiveRef.current = listeningMode !== 'none';
   }, [listeningMode]);
 
+  // Hide the bottom tab bar during diary input flow to reclaim vertical space.
+  // navigation is typed as NativeStackNavigationProp but at runtime it is the
+  // Tab.Navigator's navigation for this tab screen — setOptions is safe here.
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (navigation as any).setOptions({
+      tabBarStyle: diaryStep !== 'idle'
+        ? { display: 'none' }
+        : { backgroundColor: '#FFFAF5', borderTopColor: '#F0EDE8' },
+    });
+  }, [diaryStep, navigation]);
+
+  // Focus content TextInput when entering the reaction step in manual mode.
+  useEffect(() => {
+    if (diaryStep === 'reaction' && contentInputMethod === 'manual') {
+      setTimeout(() => contentRef.current?.focus(), 300);
+    }
+  }, [diaryStep, contentInputMethod]);
+
   function alertVoiceActive() {
     Alert.alert('音声入力中です', '音声の入力が終わってから移動してください。');
   }
 
-  const [contentQuestion] = useState(() => getAskContent(DEFAULT_CHARACTER_ID));
-
-  // Stable per targetDate — derived before diary step begins
+  // Stable per targetDate + selectedCharacterId
   const scoreQuestion = useMemo(
     () =>
       targetDate !== '' && targetDate !== toDateString(new Date())
-        ? getAskYesterdayScore(DEFAULT_CHARACTER_ID)
-        : getAskTodayScore(DEFAULT_CHARACTER_ID),
-    [targetDate],
+        ? getAskYesterdayScore(selectedCharacterId)
+        : getAskTodayScore(selectedCharacterId),
+    [targetDate, selectedCharacterId],
   );
 
   const bubbleMessage =
+    diaryStep === 'score' && scoreEntered ? reactionMessage :
     diaryStep === 'score' ? scoreQuestion :
     diaryStep === 'reaction' ? reactionMessage :
     (idleMessage || '…');
@@ -164,7 +203,7 @@ export default function HomeScreen() {
         setContent(resume.content);
         setReactionMessage(resume.characterComment);
         setDiaryStep('reaction');
-        setShowContentModal(true);
+        setScoreEntered(false);
         setListeningMode('none');
         clearScoreAutoStop();
         stopSpeechRecognition();
@@ -181,12 +220,13 @@ export default function HomeScreen() {
       setDiaryStep('idle');
       setScore(0);
       setScoreText('');
+      setScoreEntered(false);
       setReactionMessage('');
       setContent('');
-      setShowContentModal(false);
       setListeningMode('none');
       clearScoreAutoStop();
       stopSpeechRecognition();
+      setShowScoreModal(false);
 
       async function load() {
         const now = new Date();
@@ -204,17 +244,24 @@ export default function HomeScreen() {
         setScoreInputMethod(settings.scoreInputMethod);
         setContentInputMethod(settings.contentInputMethod);
 
+        const charId = settings.selectedCharacterId;
+        selectedCharacterRef.current = charId;
+        setSelectedCharacterId(charId);
         if (existing) {
-          setIdleMessage(getAlreadyWrittenComment(DEFAULT_CHARACTER_ID));
+          setIdleMessage(getAlreadyWrittenComment(charId));
+          setIdleMessageType('alreadyWritten');
           setShouldWrite(false);
         } else if (period === 'morning') {
-          setIdleMessage(getMorningGreeting(DEFAULT_CHARACTER_ID));
+          setIdleMessage(getMorningGreeting(charId));
+          setIdleMessageType('morning');
           setShouldWrite(true);
         } else if (period === 'daytime') {
-          setIdleMessage(getAfternoonComment(DEFAULT_CHARACTER_ID));
+          setIdleMessage(getAfternoonComment(charId));
+          setIdleMessageType('daytime');
           setShouldWrite(false);
         } else {
-          setIdleMessage(getNightGreeting(DEFAULT_CHARACTER_ID));
+          setIdleMessage(getNightGreeting(charId));
+          setIdleMessageType('night');
           setShouldWrite(true);
         }
       }
@@ -256,7 +303,11 @@ export default function HomeScreen() {
       const parsed = parseJapaneseScore(transcript);
       console.log('[SpeechRecognition] score parsed:', parsed);
       if (parsed !== null) {
-        setScoreText(String(parsed));
+        const clamped = Math.max(0, Math.min(100, parsed));
+        setScoreText(String(clamped));
+        setScore(clamped);
+        setReactionMessage(getScoreReaction(clamped, selectedCharacterRef.current));
+        setScoreEntered(true);
       } else {
         Alert.alert(
           '聞き取りましたが…',
@@ -274,6 +325,8 @@ export default function HomeScreen() {
     if (mode === 'none') return;
     clearScoreAutoStop();
     setListeningMode('none');
+    // Suppress if this is the tail-event of an intentional stop (mode switch / cancel).
+    if (Date.now() - intentionalStopTimeRef.current < 2000) return;
     Alert.alert(
       'うまく聞き取れませんでした',
       mode === 'score'
@@ -288,7 +341,11 @@ export default function HomeScreen() {
     setListeningMode('none');
 
     const code: string = event?.error ?? 'unknown';
+    // 'aborted' is the normal code when stop() is called on some devices.
+    // The timestamp guard covers 'interrupted' and similar codes that fire when
+    // recognition is stopped intentionally (mode switch, cancel).
     if (code === 'aborted') return;
+    if (Date.now() - intentionalStopTimeRef.current < 2000) return;
 
     let msg: string;
     switch (code) {
@@ -339,12 +396,12 @@ export default function HomeScreen() {
         Alert.alert('音声入力', VOICE_UNAVAILABLE);
       } else {
         // Auto-stop fallback: iOS does not reliably end score recognition after one utterance.
-        // 1500ms gives enough time to speak a number clearly without waiting too long.
+        // 4000ms gives enough time for slower speakers without waiting too long.
         scoreAutoStopRef.current = setTimeout(() => {
           console.log('[SpeechRecognition] score auto-stop timer fired');
           scoreAutoStopRef.current = null;
           stopSpeechRecognitionSafe();
-        }, 1500);
+        }, 4000);
       }
     } catch (e: any) {
       setListeningMode('none');
@@ -392,21 +449,26 @@ export default function HomeScreen() {
     }
   }
 
-  function handleScoreOK() {
-    Keyboard.dismiss();
-    if (scoreText.trim() === '') {
+  async function handleScoreModalConfirm() {
+    const val = scoreModalText.trim();
+    if (val === '') {
       Alert.alert('点数を入力してください', '0〜100の数字を入力してください');
       return;
     }
-    const parsed = parseInt(scoreText, 10);
+    const parsed = parseInt(val, 10);
     if (isNaN(parsed)) {
       Alert.alert('入力エラー', '0〜100の数字を入力してください');
       return;
     }
     const clamped = Math.max(0, Math.min(100, parsed));
+    // Persist score input mode as manual, then show the post-score confirmation UI.
+    const updated = await updateAppSettings({ scoreInputMethod: 'manual' });
+    setScoreInputMethod(updated.scoreInputMethod);
+    setScoreText(String(clamped));
     setScore(clamped);
-    setReactionMessage(getScoreReaction(clamped, DEFAULT_CHARACTER_ID));
-    setDiaryStep('reaction');
+    setReactionMessage(getScoreReaction(clamped, selectedCharacterRef.current));
+    setScoreEntered(true);
+    setShowScoreModal(false);
   }
 
   function goToConfirm(body: string) {
@@ -414,28 +476,44 @@ export default function HomeScreen() {
     clearScoreAutoStop();
     stopSpeechRecognition();
     setListeningMode('none');
-    setShowContentModal(false);
     Keyboard.dismiss();
-    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim() });
+    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim(), characterId: selectedCharacterId });
   }
 
-  // ScrollView during score step so automaticallyAdjustKeyboardInsets lifts content above keyboard
-  const scrollable = diaryStep === 'score';
+  function handleCancelDiaryFlow() {
+    clearScoreAutoStop();
+    stopSpeechRecognition();
+    setListeningMode('none');
+    Keyboard.dismiss();
+    setDiaryStep('idle');
+    setScore(0);
+    setScoreText('');
+    setScoreEntered(false);
+    setReactionMessage('');
+    setContent('');
+    setShowScoreModal(false);
+    setScoreModalText('');
+  }
+
+  // ScrollView only for reaction step (has inline content TextInput in manual mode)
+  const scrollable = diaryStep === 'reaction';
 
   return (
     <>
       <ScreenLayout showAd={false} scrollable={scrollable}>
-        <View style={styles.inner}>
+        <View style={[styles.inner, diaryStep !== 'idle' && styles.innerFlow]}>
 
           {/* ── Fixed top character scene ── */}
-          <Text style={styles.appTitle}>おしゃべり日記</Text>
-          <View style={styles.avatarWrap}>
-            <CharacterAvatar characterId={DEFAULT_CHARACTER_ID} size={100} />
-            <Text style={styles.characterName}>ハナ</Text>
+          {diaryStep === 'idle' && (
+            <Text style={styles.appTitle}>おしゃべり日記</Text>
+          )}
+          <View style={[styles.avatarWrap, diaryStep !== 'idle' && styles.avatarWrapFlow]}>
+            <CharacterAvatar characterId={selectedCharacterId} size={diaryStep === 'idle' ? 200 : 160} bust />
+            <Text style={styles.characterName}>{getCharacterName(selectedCharacterId)}</Text>
           </View>
           <CharacterBubble
             message={bubbleMessage}
-            characterId={DEFAULT_CHARACTER_ID}
+            characterId={selectedCharacterId}
             showAvatar={false}
           />
 
@@ -469,15 +547,58 @@ export default function HomeScreen() {
                   <Text style={styles.devTestButtonText}>テスト用：今日の日記を書く</Text>
                 </TouchableOpacity>
               )}
+
             </View>
           )}
 
           {/* ── Score input ── */}
           {diaryStep === 'score' && (
             <View style={styles.scoreBody}>
-              {scoreInputMethod === 'voice' ? (
+              {scoreEntered ? (
+                /* ── Post-score: show score badge, 「内容を書く」 as primary ── */
                 <>
-                  {/* Voice PRIMARY */}
+                  <View style={styles.scoreResultWrap}>
+                    <View style={[styles.scoreBig, scoreBg(score)]}>
+                      <Text style={styles.scoreBigText}>{score}点</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.scorePostActions}>
+                    <TouchableOpacity
+                      style={styles.writeContentBtn}
+                      onPress={() => {
+                        setDiaryStep('reaction');
+                        if (contentInputMethod === 'voice' && listeningMode === 'none') {
+                          setTimeout(() => autoStartContentVoice(), 200);
+                        }
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.writeContentBtnText}>内容を書く</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.backLink}
+                      onPress={() => goToConfirm('')}
+                    >
+                      <Text style={styles.backLinkText}>点数だけで保存</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.backLink}
+                      onPress={() => {
+                        setScoreEntered(false);
+                        setScoreText('');
+                        setScore(0);
+                      }}
+                    >
+                      <Text style={styles.backLinkText}>点数を変える</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : scoreInputMethod === 'voice' ? (
+                /* ── Voice mode, waiting for score ── */
+                <>
                   <TouchableOpacity
                     disabled={listeningMode !== 'none'}
                     style={[styles.voicePrimaryBtn, listeningMode === 'score' && styles.voicePrimaryBtnActive]}
@@ -486,117 +607,163 @@ export default function HomeScreen() {
                   >
                     <Text style={styles.voicePrimaryIcon}>🎤</Text>
                     <Text style={styles.voicePrimaryText}>
-                      {listeningMode === 'score' ? '話してください…' : '点数を声で入力する'}
+                      {listeningMode === 'score' ? '話してください…' : '点数を音声で入力する'}
                     </Text>
                   </TouchableOpacity>
 
-                  <View style={styles.orRow}>
-                    <View style={styles.orLine} />
-                    <Text style={styles.orText}>または</Text>
-                    <View style={styles.orLine} />
-                  </View>
+                  <TouchableOpacity
+                    style={styles.modeSwitchLink}
+                    onPress={() => {
+                      // Stop active recognition before the keyboard appears — keyboard opening
+                      // interrupts the AVAudioSession and would fire a spurious error event.
+                      if (listeningMode === 'score') {
+                        clearScoreAutoStop();
+                        stopVoiceIntentionally();
+                        setListeningMode('none');
+                      }
+                      setScoreModalText('');
+                      setShowScoreModal(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modeSwitchLinkText}>数字で入力する</Text>
+                  </TouchableOpacity>
 
-                  {/* Numeric SECONDARY */}
-                  <View style={styles.numericArea}>
-                    <Text style={styles.numericLabel}>数字で入力</Text>
-                    <TextInput
-                      style={styles.numericInput}
-                      keyboardType="number-pad"
-                      placeholder="0〜100"
-                      placeholderTextColor="#CCC"
-                      value={scoreText}
-                      onChangeText={(t) => setScoreText(t.replace(/[^0-9]/g, ''))}
-                      maxLength={3}
-                      returnKeyType="done"
-                      onSubmitEditing={handleScoreOK}
-                      selectTextOnFocus
-                    />
-                  </View>
+                  <TouchableOpacity style={styles.cancelLink} onPress={handleCancelDiaryFlow}>
+                    <Text style={styles.cancelLinkText}>入力をやめる</Text>
+                  </TouchableOpacity>
                 </>
               ) : (
+                /* ── Manual mode: button opens the numeric modal ── */
                 <>
-                  {/* Numeric PRIMARY */}
-                  <View style={[styles.numericArea, { marginTop: 16 }]}>
-                    <Text style={styles.numericLabel}>点数を入力してください</Text>
-                    <TextInput
-                      style={styles.numericInputPrimary}
-                      keyboardType="number-pad"
-                      placeholder="0〜100"
-                      placeholderTextColor="#CCC"
-                      value={scoreText}
-                      onChangeText={(t) => setScoreText(t.replace(/[^0-9]/g, ''))}
-                      maxLength={3}
-                      returnKeyType="done"
-                      onSubmitEditing={handleScoreOK}
-                      selectTextOnFocus
-                    />
+                  <View style={styles.scoreEnterBtnWrap}>
+                    <TouchableOpacity
+                      style={styles.scoreEnterBtn}
+                      onPress={() => { setScoreModalText(''); setShowScoreModal(true); }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.scoreEnterBtnText}>点数を入力する</Text>
+                    </TouchableOpacity>
                   </View>
+
+                  <TouchableOpacity
+                    style={styles.modeSwitchLink}
+                    onPress={async () => {
+                      const updated = await updateAppSettings({ scoreInputMethod: 'voice' });
+                      setScoreInputMethod(updated.scoreInputMethod);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modeSwitchLinkText}>音声で点数を入力する</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.cancelLink} onPress={handleCancelDiaryFlow}>
+                    <Text style={styles.cancelLinkText}>入力をやめる</Text>
+                  </TouchableOpacity>
                 </>
-              )}
-
-              <View style={styles.scoreOkWrap}>
-                <TouchableOpacity
-                  style={styles.scoreOkBtn}
-                  onPress={handleScoreOK}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.scoreOkBtnText}>OK</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Voice SECONDARY — shown only in manual mode */}
-              {scoreInputMethod === 'manual' && (
-                <TouchableOpacity
-                  disabled={listeningMode !== 'none'}
-                  style={styles.voiceSecondaryBtn}
-                  onPress={handleVoiceScore}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.voiceSecondaryText}>
-                    {listeningMode === 'score' ? '🎤 話してください…' : '🎤 音声でも入力できます'}
-                  </Text>
-                </TouchableOpacity>
               )}
             </View>
           )}
 
-          {/* ── Reaction / choice ── */}
+          {/* ── Reaction / content input (inline) ── */}
           {diaryStep === 'reaction' && (
             <View style={styles.reactionBody}>
               <View style={styles.scoreBigWrap}>
                 <View style={[styles.scoreBig, scoreBg(score)]}>
                   <Text style={styles.scoreBigText}>{score}点</Text>
                 </View>
-                <Text style={styles.scoreOnlyHint}>点数だけでも大丈夫</Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.reactionOkBtn}
-                onPress={() => goToConfirm('')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.reactionOkBtnText}>OK</Text>
-              </TouchableOpacity>
+              {contentInputMethod === 'voice' ? (
+                <>
+                  <TouchableOpacity
+                    disabled={listeningMode !== 'none'}
+                    style={[styles.voiceContentBtn, listeningMode === 'content' && styles.voiceContentBtnActive]}
+                    onPress={handleVoiceContent}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.voiceContentBtnText}>
+                      {listeningMode === 'content' ? '聞き取り中…' : '🎤 話して入力する'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {content !== '' && (
+                    <View style={styles.contentPreview}>
+                      <Text style={styles.contentPreviewLabel}>入力された内容</Text>
+                      <Text style={styles.contentPreviewText}>{content}</Text>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.modeSwitchLink}
+                    onPress={async () => {
+                      if (listeningMode === 'content') {
+                        // Stop intentionally — suppress the resulting error/nomatch event.
+                        stopVoiceIntentionally();
+                        setListeningMode('none');
+                      }
+                      const updated = await updateAppSettings({ contentInputMethod: 'manual' });
+                      setContentInputMethod(updated.contentInputMethod);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modeSwitchLinkText}>文字で入力する</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TextInput
+                    ref={contentRef}
+                    style={styles.panelInput}
+                    multiline
+                    placeholder="ここに書く（空でもOK）"
+                    placeholderTextColor="#CCC"
+                    value={content}
+                    onChangeText={setContent}
+                    textAlignVertical="top"
+                    blurOnSubmit={false}
+                    returnKeyType="default"
+                  />
+                  <TouchableOpacity
+                    style={styles.modeSwitchLink}
+                    onPress={async () => {
+                      Keyboard.dismiss();
+                      const updated = await updateAppSettings({ contentInputMethod: 'voice' });
+                      setContentInputMethod(updated.contentInputMethod);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.modeSwitchLinkText}>音声で入力する</Text>
+                  </TouchableOpacity>
+                </>
+              )}
 
               <TouchableOpacity
-                style={styles.reactionSecBtn}
-                onPress={() => {
-                  setShowContentModal(true);
-                  if (contentInputMethod === 'voice' && listeningMode === 'none') {
-                    // Wait for the modal slide animation before starting recognition
-                    setTimeout(() => autoStartContentVoice(), 200);
-                  }
-                }}
+                style={styles.panelOkBtn}
+                onPress={() => goToConfirm(content)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.reactionSecBtnText}>内容を書く</Text>
+                <Text style={styles.panelOkBtnText}>この内容でOK</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.backLink}
-                onPress={() => setDiaryStep('score')}
+                onPress={() => {
+                  if (listeningMode !== 'none') { alertVoiceActive(); return; }
+                  setDiaryStep('score');
+                }}
               >
                 <Text style={styles.backLinkText}>点数を変える</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.cancelLink}
+                onPress={() => {
+                  if (listeningMode !== 'none') { alertVoiceActive(); return; }
+                  handleCancelDiaryFlow();
+                }}
+              >
+                <Text style={styles.cancelLinkText}>入力をやめる</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -604,86 +771,56 @@ export default function HomeScreen() {
         </View>
       </ScreenLayout>
 
-      {/* ── Content input modal: slides up above keyboard, main scene stays fixed ── */}
+      {/* ── Score numeric popup modal ── */}
       <Modal
-        visible={showContentModal}
+        visible={showScoreModal}
         transparent
-        animationType="slide"
-        onRequestClose={() => {
-          if (listeningMode !== 'none') { alertVoiceActive(); return; }
-          setShowContentModal(false);
-        }}
+        animationType="fade"
+        onRequestClose={() => setShowScoreModal(false)}
       >
         <KeyboardAvoidingView
-          style={styles.modalKAV}
+          style={styles.scoreModalKAV}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <TouchableOpacity
-            style={styles.modalBackdrop}
+            style={styles.scoreModalOverlay}
             activeOpacity={1}
-            onPress={() => {
-              if (listeningMode !== 'none') { alertVoiceActive(); return; }
-              setShowContentModal(false);
-            }}
-          />
-          <View style={[styles.contentPanel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-            <Text style={styles.panelPrompt}>{contentQuestion}</Text>
-            <Text style={styles.panelHint}>書きたいことがあれば残しておこう（空のままでもOK）</Text>
-
-            <TouchableOpacity
-              disabled={listeningMode !== 'none'}
-              style={[
-                contentInputMethod === 'voice' ? styles.voiceContentBtn : styles.voiceContentBtnSecondary,
-                listeningMode === 'content' && styles.voiceContentBtnActive,
-              ]}
-              onPress={handleVoiceContent}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={
-                  contentInputMethod === 'voice'
-                    ? styles.voiceContentBtnText
-                    : styles.voiceContentBtnSecondaryText
-                }
-              >
-                {listeningMode === 'content' ? '聞き取り中…' : '🎤 話して入力する'}
-              </Text>
+            onPress={() => setShowScoreModal(false)}
+          >
+            <TouchableOpacity style={styles.scoreModalBox} activeOpacity={1} onPress={() => {}}>
+              <Text style={styles.scoreModalTitle}>点数を入力</Text>
+              <TextInput
+                style={styles.scoreModalInput}
+                keyboardType="number-pad"
+                placeholder="0〜100"
+                placeholderTextColor="#CCC"
+                value={scoreModalText}
+                onChangeText={(t) => setScoreModalText(t.replace(/[^0-9]/g, ''))}
+                maxLength={3}
+                selectTextOnFocus
+                autoFocus
+              />
+              <View style={styles.scoreModalActions}>
+                <TouchableOpacity
+                  style={styles.scoreModalCancelBtn}
+                  onPress={() => setShowScoreModal(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.scoreModalCancelText}>キャンセル</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.scoreModalOkBtn}
+                  onPress={handleScoreModalConfirm}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.scoreModalOkText}>決定</Text>
+                </TouchableOpacity>
+              </View>
             </TouchableOpacity>
-
-            <TextInput
-              ref={contentRef}
-              style={styles.panelInput}
-              multiline
-              autoFocus={contentInputMethod !== 'voice'}
-              placeholder="ここに書く（空でもOK）"
-              placeholderTextColor="#CCC"
-              value={content}
-              onChangeText={setContent}
-              textAlignVertical="top"
-              blurOnSubmit={false}
-              returnKeyType="default"
-            />
-
-            <TouchableOpacity
-              style={styles.panelOkBtn}
-              onPress={() => goToConfirm(content)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.panelOkBtnText}>この内容でOK</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.panelBack}
-              onPress={() => {
-                if (listeningMode !== 'none') { alertVoiceActive(); return; }
-                setShowContentModal(false);
-              }}
-            >
-              <Text style={styles.panelBackText}>戻る</Text>
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </KeyboardAvoidingView>
       </Modal>
+
     </>
   );
 }
@@ -696,6 +833,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 24,
   },
+  innerFlow: {
+    paddingTop: 10,
+  },
 
   // ── Fixed character scene ─────────────────────────────────
 
@@ -704,13 +844,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#5C4A2A',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     letterSpacing: 1,
   },
   avatarWrap: {
     alignItems: 'center',
     marginBottom: 8,
     gap: 8,
+  },
+  avatarWrapFlow: {
+    marginBottom: 4,
   },
   characterName: {
     fontSize: 14,
@@ -792,63 +935,63 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  orRow: {
-    flexDirection: 'row',
+  scoreEnterBtnWrap: {
     alignItems: 'center',
-    marginHorizontal: 24,
-    marginVertical: 10,
-    gap: 10,
+    marginTop: 14,
   },
-  orLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E8E0D8',
-  },
-  orText: {
-    fontSize: 12,
-    color: '#BBB',
-  },
-  numericArea: {
-    marginHorizontal: 24,
-    gap: 6,
-  },
-  numericLabel: {
-    fontSize: 13,
-    color: '#888',
-    fontWeight: '600',
-  },
-  numericInput: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E0D8CC',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-  },
-  scoreOkWrap: {
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  scoreOkBtn: {
-    alignSelf: 'center',
+  scoreEnterBtn: {
     backgroundColor: '#F5A623',
     borderRadius: 28,
-    paddingVertical: 16,
-    paddingHorizontal: 64,
+    paddingVertical: 18,
+    paddingHorizontal: 48,
     alignItems: 'center',
   },
-  scoreOkBtnText: {
-    fontSize: 20,
+  scoreEnterBtnText: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
 
-  // Manual mode: larger primary numeric input
-  numericInputPrimary: {
+  // ── Mode-switch links (shared, score step + content modal) ─
+
+  modeSwitchLink: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 4,
+  },
+  modeSwitchLinkText: {
+    fontSize: 13,
+    color: '#BBB',
+    textDecorationLine: 'underline',
+  },
+
+  // ── Score numeric popup modal ──────────────────────────────
+
+  scoreModalKAV: {
+    flex: 1,
+  },
+  scoreModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  scoreModalBox: {
+    backgroundColor: '#FFFAF5',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    gap: 16,
+  },
+  scoreModalTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#5C4A2A',
+    textAlign: 'center',
+  },
+  scoreModalInput: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 2,
@@ -860,23 +1003,66 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
   },
-
-  // Manual mode: secondary voice link below OK
-  voiceSecondaryBtn: {
+  scoreModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  scoreModalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E0D8CC',
+    paddingVertical: 14,
     alignItems: 'center',
-    paddingVertical: 8,
-    marginTop: 2,
   },
-  voiceSecondaryText: {
-    fontSize: 13,
-    color: '#CCC',
-    textDecorationLine: 'underline',
+  scoreModalCancelText: {
+    fontSize: 15,
+    color: '#AAA',
+    fontWeight: '600',
+  },
+  scoreModalOkBtn: {
+    flex: 1,
+    backgroundColor: '#F5A623',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  scoreModalOkText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 
-  // ── Reaction / choice ─────────────────────────────────────
+  // ── Score post-entry result ───────────────────────────────
+
+  scoreResultWrap: {
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  scorePostActions: {
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  writeContentBtn: {
+    backgroundColor: '#F5A623',
+    borderRadius: 28,
+    paddingVertical: 18,
+    paddingHorizontal: 48,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  writeContentBtnText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+
+  // ── Reaction / content input ──────────────────────────────
 
   reactionBody: {
-    alignItems: 'center',
+    paddingHorizontal: 24,
     paddingTop: 10,
     paddingBottom: 24,
     gap: 14,
@@ -895,75 +1081,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  scoreOnlyHint: {
-    fontSize: 13,
-    color: '#AAA',
-  },
-  reactionOkBtn: {
-    backgroundColor: '#F5A623',
-    borderRadius: 28,
-    paddingVertical: 20,
-    paddingHorizontal: 72,
-    alignItems: 'center',
-    minWidth: 200,
-  },
-  reactionOkBtnText: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  reactionSecBtn: {
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  reactionSecBtnText: {
-    fontSize: 14,
-    color: '#999',
-  },
   backLink: {
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   backLinkText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#AAA',
     textDecorationLine: 'underline',
   },
 
-  // ── Content modal ─────────────────────────────────────────
-
-  modalKAV: {
-    flex: 1,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-  },
-  contentPanel: {
-    backgroundColor: '#FFFAF5',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    gap: 12,
-  },
-  panelPrompt: {
-    fontSize: 15,
-    color: '#5C4A2A',
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  panelHint: {
-    fontSize: 12,
-    color: '#BBB',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
   voiceContentBtn: {
     backgroundColor: '#FFF3E0',
     borderRadius: 14,
@@ -980,18 +1107,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#C47F00',
     fontWeight: '600',
-  },
-  voiceContentBtnSecondary: {
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0D8CC',
-    backgroundColor: '#FAFAFA',
-  },
-  voiceContentBtnSecondaryText: {
-    fontSize: 13,
-    color: '#BBB',
   },
   panelInput: {
     backgroundColor: '#FFFFFF',
@@ -1015,13 +1130,32 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  panelBack: {
-    alignItems: 'center',
-    paddingVertical: 8,
+  cancelLink: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
-  panelBackText: {
-    fontSize: 14,
-    color: '#AAA',
+  cancelLinkText: {
+    fontSize: 13,
+    color: '#BBB',
     textDecorationLine: 'underline',
+  },
+  contentPreview: {
+    backgroundColor: '#FFF8EE',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F0D8A8',
+    padding: 12,
+    gap: 4,
+  },
+  contentPreviewLabel: {
+    fontSize: 11,
+    color: '#AAA',
+    fontWeight: '600',
+  },
+  contentPreviewText: {
+    fontSize: 15,
+    color: '#444',
+    lineHeight: 22,
   },
 });
