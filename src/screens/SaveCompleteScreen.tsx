@@ -43,7 +43,7 @@ export default function SaveCompleteScreen() {
   return (
     <ScreenLayout scrollable>
       <View style={styles.avatarWrap}>
-        <CharacterAvatar characterId={characterId} size={155} bust />
+        <CharacterAvatar characterId={characterId} size={155} bust expression="happy" />
         <Text style={styles.characterName}>{characterName}</Text>
       </View>
 

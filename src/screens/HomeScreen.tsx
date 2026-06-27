@@ -185,6 +185,11 @@ export default function HomeScreen() {
     diaryStep === 'reaction' ? reactionMessage :
     (idleMessage || '…');
 
+  // Show worry when a low score (≤40) has been entered; happy is reserved for
+  // save-complete. Normal covers idle, pre-score, and high/mid scores.
+  const characterExpression =
+    (scoreEntered || diaryStep === 'reaction') && score <= 40 ? 'worry' : 'normal';
+
   const diaryInfo = targetDate !== '' ? getDiaryDateInfo(targetDate) : null;
 
   // ── Load greeting on focus; reset diary flow (or restore edit state) ──
@@ -508,7 +513,7 @@ export default function HomeScreen() {
             <Text style={styles.appTitle}>おしゃべり日記</Text>
           )}
           <View style={[styles.avatarWrap, diaryStep !== 'idle' && styles.avatarWrapFlow]}>
-            <CharacterAvatar characterId={selectedCharacterId} size={diaryStep === 'idle' ? 200 : 160} bust />
+            <CharacterAvatar characterId={selectedCharacterId} size={diaryStep === 'idle' ? 200 : 160} bust expression={characterExpression} />
             <Text style={styles.characterName}>{getCharacterName(selectedCharacterId)}</Text>
           </View>
           <CharacterBubble

@@ -36,6 +36,7 @@ export default function DiaryConfirmScreen() {
   const diaryInfo = getDiaryDateInfo(targetDate);
   const characterComment = getScoreReaction(score, characterId);
   const characterName = CHARACTERS.find((c) => c.id === characterId)?.name ?? characterId;
+  const expression = score <= 40 ? 'worry' as const : 'normal' as const;
 
   async function handleSave() {
     setSaving(true);
@@ -68,7 +69,7 @@ export default function DiaryConfirmScreen() {
   return (
     <ScreenLayout scrollable>
       <View style={styles.avatarWrap}>
-        <CharacterAvatar characterId={characterId} size={155} bust />
+        <CharacterAvatar characterId={characterId} size={155} bust expression={expression} />
         <Text style={styles.characterName}>{characterName}</Text>
       </View>
 
