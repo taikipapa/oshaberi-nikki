@@ -31,7 +31,7 @@ export function getAskYesterdayScore(characterId?: string): string {
 export function getScoreReaction(score: number, characterId?: string): string {
   const set = getSpeechSet(characterId);
   if (score >= 80) return pickRandom(set.highScoreReactions);
-  if (score >= 50) return pickRandom(set.normalScoreReactions);
+  if (score > 40) return pickRandom(set.normalScoreReactions);
   return pickRandom(set.lowScoreReactions);
 }
 
