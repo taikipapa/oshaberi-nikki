@@ -1,6 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import CharacterAvatar from '../components/CharacterAvatar';
 import { CHARACTERS } from '../constants/characters';
 import { Character } from '../types';
 import { getAppSettings, updateAppSettings } from '../storage/settingsStorage';
+import { showRewardedAdForCharacterUnlock } from '../services/rewardedAds';
 
 // Bust avatar dimensions at size=88 — must match CharacterAvatar's bust calculation.
 const AVATAR_WIDTH = 88;
@@ -51,31 +51,22 @@ export default function CharacterScreen() {
     }
   }
 
-  function handleUnlockPress(ch: Character) {
-    Alert.alert(
-      '広告を見て解放',
-      'テスト用にこのキャラクターを解放しますか？',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '解放する',
-          onPress: async () => {
-            if (savingRef.current) return;
-            savingRef.current = true;
-            const newIds = [...unlockedIds, ch.id];
-            setUnlockedIds(newIds);
-            try {
-              await updateAppSettings({ unlockedCharacterIds: newIds });
-            } catch {
-              const s = await getAppSettings();
-              setUnlockedIds(s.unlockedCharacterIds);
-            } finally {
-              savingRef.current = false;
-            }
-          },
-        },
-      ],
-    );
+  async function handleUnlockPress(ch: Character) {
+    if (savingRef.current) return;
+    const earned = await showRewardedAdForCharacterUnlock(ch.id);
+    if (!earned) return;
+
+    savingRef.current = true;
+    const newIds = [...unlockedIds, ch.id];
+    setUnlockedIds(newIds);
+    try {
+      await updateAppSettings({ unlockedCharacterIds: newIds });
+    } catch {
+      const s = await getAppSettings();
+      setUnlockedIds(s.unlockedCharacterIds);
+    } finally {
+      savingRef.current = false;
+    }
   }
 
   const sortedCharacters = [...CHARACTERS].sort((a, b) => a.sortOrder - b.sortOrder);
