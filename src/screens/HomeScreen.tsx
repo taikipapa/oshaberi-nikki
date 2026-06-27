@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -48,6 +48,8 @@ import {
   getAppSettings,
   InputMethod,
 } from '../storage/settingsStorage';
+import { voiceActiveRef } from '../utils/voiceState';
+import { pendingResumeRef } from '../utils/diaryEditState';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -119,6 +121,15 @@ export default function HomeScreen() {
     }
   }
 
+  // Keep the module-level ref in sync so the Tab Navigator can block tab presses.
+  useEffect(() => {
+    voiceActiveRef.current = listeningMode !== 'none';
+  }, [listeningMode]);
+
+  function alertVoiceActive() {
+    Alert.alert('音声入力中です', '音声の入力が終わってから移動してください。');
+  }
+
   const [contentQuestion] = useState(() => getAskContent(DEFAULT_CHARACTER_ID));
 
   // Stable per targetDate — derived before diary step begins
@@ -137,11 +148,36 @@ export default function HomeScreen() {
 
   const diaryInfo = targetDate !== '' ? getDiaryDateInfo(targetDate) : null;
 
-  // ── Load greeting on focus; reset diary flow ──
+  // ── Load greeting on focus; reset diary flow (or restore edit state) ──
   useFocusEffect(
     useCallback(() => {
       let active = true;
 
+      // Resume edit path: DiaryConfirmScreen wrote a state snapshot before goBack().
+      // Restore it instead of resetting to idle so the user can correct content.
+      const resume = pendingResumeRef.current;
+      if (resume) {
+        pendingResumeRef.current = null; // consume immediately — one-shot
+        setTargetDate(resume.targetDate);
+        setScore(resume.score);
+        setScoreText(String(resume.score));
+        setContent(resume.content);
+        setReactionMessage(resume.characterComment);
+        setDiaryStep('reaction');
+        setShowContentModal(true);
+        setListeningMode('none');
+        clearScoreAutoStop();
+        stopSpeechRecognition();
+        // Refresh settings in case user changed them while on DiaryConfirmScreen
+        getAppSettings().then((s) => {
+          if (!active) return;
+          setScoreInputMethod(s.scoreInputMethod);
+          setContentInputMethod(s.contentInputMethod);
+        });
+        return () => { active = false; };
+      }
+
+      // Normal path: reset all diary flow state then load greeting.
       setDiaryStep('idle');
       setScore(0);
       setScoreText('');
@@ -374,6 +410,10 @@ export default function HomeScreen() {
   }
 
   function goToConfirm(body: string) {
+    // Stop any ongoing recognition before navigating — content voice has no auto-stop timer.
+    clearScoreAutoStop();
+    stopSpeechRecognition();
+    setListeningMode('none');
     setShowContentModal(false);
     Keyboard.dismiss();
     navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim() });
@@ -569,7 +609,10 @@ export default function HomeScreen() {
         visible={showContentModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowContentModal(false)}
+        onRequestClose={() => {
+          if (listeningMode !== 'none') { alertVoiceActive(); return; }
+          setShowContentModal(false);
+        }}
       >
         <KeyboardAvoidingView
           style={styles.modalKAV}
@@ -578,7 +621,10 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.modalBackdrop}
             activeOpacity={1}
-            onPress={() => setShowContentModal(false)}
+            onPress={() => {
+              if (listeningMode !== 'none') { alertVoiceActive(); return; }
+              setShowContentModal(false);
+            }}
           />
           <View style={[styles.contentPanel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             <Text style={styles.panelPrompt}>{contentQuestion}</Text>
@@ -628,7 +674,10 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.panelBack}
-              onPress={() => setShowContentModal(false)}
+              onPress={() => {
+                if (listeningMode !== 'none') { alertVoiceActive(); return; }
+                setShowContentModal(false);
+              }}
             >
               <Text style={styles.panelBackText}>戻る</Text>
             </TouchableOpacity>

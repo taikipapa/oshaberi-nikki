@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { Alert, View, Text } from 'react-native';
+import { voiceActiveRef } from '../utils/voiceState';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
@@ -50,6 +51,14 @@ function MainTabs() {
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFAF5' }}>
       <Tab.Navigator
+        screenListeners={{
+          tabPress: (e) => {
+            if (voiceActiveRef.current) {
+              e.preventDefault();
+              Alert.alert('音声入力中です', '音声の入力が終わってから移動してください。');
+            }
+          },
+        }}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarIcon: ({ focused }) => (

@@ -16,6 +16,7 @@ import { DEFAULT_CHARACTER_ID } from '../constants/characters';
 import { getDiaryDateInfo } from '../utils/dateUtils';
 import { getScoreReaction, getSaveCompleteMessage } from '../utils/speech';
 import { saveDiaryEntry } from '../storage/diaryStorage';
+import { pendingResumeRef } from '../utils/diaryEditState';
 import { DiaryEntry } from '../types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -58,6 +59,8 @@ export default function DiaryConfirmScreen() {
   }
 
   function handleBack() {
+    // Signal HomeScreen to restore content editing rather than resetting to idle.
+    pendingResumeRef.current = { targetDate, score, content, characterComment };
     navigation.goBack();
   }
 
