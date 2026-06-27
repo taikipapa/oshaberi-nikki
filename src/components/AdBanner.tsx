@@ -1,6 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BANNER_AD_UNIT_ID } from '../constants/adUnits';
+import { requestPersonalizedAdsPermission } from '../services/trackingPermission';
 
 interface Props {
   // True when the banner is the bottommost element in a stack screen
@@ -10,30 +13,32 @@ interface Props {
 
 export default function AdBanner({ withBottomInset = false }: Props) {
   const insets = useSafeAreaInsets();
+  // null = ATT not yet resolved; true/false = resolved
+  const [personalized, setPersonalized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Requests ATT on first render (shows dialog if not yet determined).
+    // Subsequent calls return the cached result without showing the dialog again.
+    requestPersonalizedAdsPermission().then(setPersonalized);
+  }, []);
+
+  if (personalized === null) return null;
+
   return (
-    <View
-      style={[
-        styles.container,
-        withBottomInset && { paddingBottom: insets.bottom },
-      ]}
-    >
-      <Text style={styles.label}>広告スペース</Text>
+    <View style={[styles.container, withBottomInset && { paddingBottom: insets.bottom }]}>
+      <BannerAd
+        unitId={BANNER_AD_UNIT_ID}
+        size={BannerAdSize.BANNER}
+        requestOptions={{ requestNonPersonalizedAdsOnly: !personalized }}
+        onAdFailedToLoad={() => {/* fail silently */}}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    height: 50,
-    backgroundColor: '#F0EDE8',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#DDD8D0',
-  },
-  label: {
-    fontSize: 12,
-    color: '#AAA49C',
-    letterSpacing: 1,
+    backgroundColor: '#FFFAF5',
   },
 });

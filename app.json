@@ -12,7 +12,8 @@
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "日記の音声入力のために音声認識を使用します。",
         "NSMicrophoneUsageDescription": "日記の音声入力のためにマイクを使用します。",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSUserTrackingUsageDescription": "広告のパーソナライズのためにデバイス識別子を使用することがあります。許可しない場合も広告は表示されます。"
       },
       "bundleIdentifier": "com.daitaina.oshaberi-nikki"
     },
@@ -46,7 +47,8 @@
           "androidAppId": "ca-app-pub-2833241675946579~8381649947",
           "iosAppId": "ca-app-pub-2833241675946579~6946681711"
         }
-      ]
+      ],
+      "expo-tracking-transparency"
     ],
     "extra": {
       "eas": {

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,6 +10,7 @@ import { RootStackParamList } from '../navigation/types';
 import { CHARACTERS } from '../constants/characters';
 import { getSaveCompleteMessage } from '../utils/speech';
 import { getDiaryDateInfo } from '../utils/dateUtils';
+import { showDailyInterstitialIfNeeded } from '../services/interstitialAds';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteType = RouteProp<RootStackParamList, 'SaveComplete'>;
@@ -20,24 +21,24 @@ export default function SaveCompleteScreen() {
   const { targetDate, characterId } = route.params;
   const diaryInfo = getDiaryDateInfo(targetDate);
   const characterName = CHARACTERS.find((c) => c.id === characterId)?.name ?? characterId;
+  const [isLeaving, setIsLeaving] = useState(false);
 
   const message = useMemo(
     () => getSaveCompleteMessage(characterId),
     [characterId],
   );
 
-  function goCalendar() {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainTabs', params: { screen: 'Calendar' } }],
-    });
-  }
-
-  function goHome() {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainTabs' }],
-    });
+  async function handleGoHome() {
+    if (isLeaving) return;
+    setIsLeaving(true);
+    try {
+      await showDailyInterstitialIfNeeded();
+    } finally {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+    }
   }
 
   return (
@@ -66,19 +67,12 @@ export default function SaveCompleteScreen() {
 
       <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={goCalendar}
+          style={[styles.primaryButton, isLeaving && styles.primaryButtonDisabled]}
+          onPress={handleGoHome}
+          disabled={isLeaving}
           activeOpacity={0.8}
         >
-          <Text style={styles.primaryButtonText}>カレンダーを見る</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={goHome}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.secondaryButtonText}>ホームへ戻る</Text>
+          <Text style={styles.primaryButtonText}>ホームへ戻る</Text>
         </TouchableOpacity>
       </View>
     </ScreenLayout>
@@ -134,7 +128,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 8,
     paddingBottom: 16,
-    gap: 14,
   },
   primaryButton: {
     backgroundColor: '#F5A623',
@@ -142,21 +135,12 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: 'center',
   },
+  primaryButtonDisabled: {
+    opacity: 0.6,
+  },
   primaryButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
-  },
-  secondaryButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E0D8CC',
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    color: '#888',
   },
 });

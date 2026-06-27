@@ -1,14 +1,17 @@
 import { Alert } from 'react-native';
 import { RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
 import { REWARDED_AD_UNIT_ID } from '../constants/adUnits';
+import { requestPersonalizedAdsPermission } from './trackingPermission';
 
 /**
  * Request a rewarded ad for character unlock.
  * Returns true if the reward was earned, false if cancelled or ad failed.
  *
- * Uses non-personalized ads (no ATT required).
+ * ATT is requested before the first ad load. Subsequent calls use the cached result.
  */
-export function showRewardedAdForCharacterUnlock(_characterId: string): Promise<boolean> {
+export async function showRewardedAdForCharacterUnlock(_characterId: string): Promise<boolean> {
+  const personalized = await requestPersonalizedAdsPermission();
+
   return new Promise((resolve) => {
     let settled = false;
     const finish = (earned: boolean) => {
@@ -18,7 +21,7 @@ export function showRewardedAdForCharacterUnlock(_characterId: string): Promise<
     };
 
     const ad = RewardedAd.createForAdRequest(REWARDED_AD_UNIT_ID, {
-      requestNonPersonalizedAdsOnly: true,
+      requestNonPersonalizedAdsOnly: !personalized,
     });
 
     let rewardEarned = false;
