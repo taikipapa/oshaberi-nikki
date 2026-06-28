@@ -84,6 +84,8 @@ export default function DiaryFlowScreen() {
   );
   const [content, setContent] = useState(initialContent ?? '');
   const [showContentModal, setShowContentModal] = useState(false);
+  const [showScoreModal, setShowScoreModal] = useState(false);
+  const [scoreModalText, setScoreModalText] = useState('');
   const contentRef = useRef<TextInput>(null);
 
   const [isListening, setIsListening] = useState(false);
@@ -101,7 +103,11 @@ export default function DiaryFlowScreen() {
     if (target === 'score') {
       const parsed = parseJapaneseScore(transcript);
       if (parsed !== null) {
-        setScoreText(String(parsed));
+        const clamped = Math.max(0, Math.min(100, parsed));
+        setScore(clamped);
+        setScoreText(String(clamped));
+        setReactionMessage(getScoreReaction(clamped, charId));
+        setStep('reaction');
       } else {
         Alert.alert(
           '聞き取れませんでした',
@@ -166,20 +172,22 @@ export default function DiaryFlowScreen() {
     }
   }
 
-  function handleScoreOK() {
-    Keyboard.dismiss();
-    if (scoreText.trim() === '') {
+  function handleScoreModalConfirm() {
+    const val = scoreModalText.trim();
+    if (val === '') {
       Alert.alert('点数を入力してください', '0〜100の数字を入力してください');
       return;
     }
-    const parsed = parseInt(scoreText, 10);
+    const parsed = parseInt(val, 10);
     if (isNaN(parsed)) {
       Alert.alert('入力エラー', '0〜100の数字を入力してください');
       return;
     }
     const clamped = Math.max(0, Math.min(100, parsed));
     setScore(clamped);
+    setScoreText(String(clamped));
     setReactionMessage(getScoreReaction(clamped, charId));
+    setShowScoreModal(false);
     setStep('reaction');
   }
 
@@ -221,37 +229,13 @@ export default function DiaryFlowScreen() {
               </Text>
             </TouchableOpacity>
 
-            <View style={styles.orRow}>
-              <View style={styles.orLine} />
-              <Text style={styles.orText}>または</Text>
-              <View style={styles.orLine} />
-            </View>
-
-            <View style={styles.numericArea}>
-              <Text style={styles.numericLabel}>数字で入力</Text>
-              <TextInput
-                style={styles.numericInput}
-                keyboardType="number-pad"
-                placeholder="0〜100"
-                placeholderTextColor="#CCC"
-                value={scoreText}
-                onChangeText={(t) => setScoreText(t.replace(/[^0-9]/g, ''))}
-                maxLength={3}
-                returnKeyType="done"
-                onSubmitEditing={handleScoreOK}
-                selectTextOnFocus
-              />
-            </View>
-
-            <View style={styles.scoreOkWrap}>
-              <TouchableOpacity
-                style={styles.scoreOkBtn}
-                onPress={handleScoreOK}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.scoreOkBtnText}>OK</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.numericLink}
+              onPress={() => { setScoreModalText(scoreText); setShowScoreModal(true); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.numericLinkText}>数字で入力する</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -350,6 +334,56 @@ export default function DiaryFlowScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── Score numeric popup modal ── */}
+      <Modal
+        visible={showScoreModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowScoreModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.scoreModalKAV}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity
+            style={styles.scoreModalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowScoreModal(false)}
+          >
+            <TouchableOpacity style={styles.scoreModalBox} activeOpacity={1} onPress={() => {}}>
+              <Text style={styles.scoreModalTitle}>点数を入力</Text>
+              <TextInput
+                style={styles.scoreModalInput}
+                keyboardType="number-pad"
+                placeholder="0〜100"
+                placeholderTextColor="#CCC"
+                value={scoreModalText}
+                onChangeText={(t) => setScoreModalText(t.replace(/[^0-9]/g, ''))}
+                maxLength={3}
+                selectTextOnFocus
+                autoFocus
+              />
+              <View style={styles.scoreModalActions}>
+                <TouchableOpacity
+                  style={styles.scoreModalCancelBtn}
+                  onPress={() => setShowScoreModal(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.scoreModalCancelText}>キャンセル</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.scoreModalOkBtn}
+                  onPress={handleScoreModalConfirm}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.scoreModalOkText}>決定</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
     </>
   );
 }
@@ -408,57 +442,75 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  orRow: {
-    flexDirection: 'row',
+  numericLink: {
     alignItems: 'center',
-    marginHorizontal: 24,
-    marginVertical: 10,
-    gap: 10,
+    marginTop: 20,
+    paddingVertical: 8,
   },
-  orLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E8E0D8',
-  },
-  orText: {
-    fontSize: 12,
-    color: '#BBB',
-  },
-  numericArea: {
-    marginHorizontal: 24,
-    gap: 6,
-  },
-  numericLabel: {
-    fontSize: 13,
+  numericLinkText: {
+    fontSize: 15,
     color: '#888',
-    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
-  numericInput: {
+  scoreModalKAV: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  scoreModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scoreModalBox: {
+    backgroundColor: '#FFFAF5',
+    borderRadius: 20,
+    padding: 24,
+    width: '80%',
+    gap: 16,
+  },
+  scoreModalTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#5C4A2A',
+    textAlign: 'center',
+  },
+  scoreModalInput: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#E0D8CC',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#333',
     textAlign: 'center',
   },
-  scoreOkWrap: {
-    alignItems: 'center',
-    marginTop: 12,
+  scoreModalActions: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  scoreOkBtn: {
-    alignSelf: 'center',
+  scoreModalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  scoreModalCancelText: {
+    fontSize: 16,
+    color: '#888',
+  },
+  scoreModalOkBtn: {
+    flex: 1,
     backgroundColor: '#F5A623',
-    borderRadius: 28,
-    paddingVertical: 16,
-    paddingHorizontal: 64,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
   },
-  scoreOkBtnText: {
-    fontSize: 20,
+  scoreModalOkText: {
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },

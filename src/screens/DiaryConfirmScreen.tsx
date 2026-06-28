@@ -54,7 +54,7 @@ export default function DiaryConfirmScreen() {
           updatedAt: now,
         };
         await updateDiaryEntry(updated);
-        navigation.pop(2); // DiaryConfirm → DiaryFlow → back to DiaryDetail
+        navigation.navigate('SaveComplete', { targetDate, characterId: editParams.characterId });
       } else {
         const entry: DiaryEntry = {
           id: generateId(),
