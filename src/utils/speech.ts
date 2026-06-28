@@ -50,3 +50,12 @@ export function getIdleComment(characterId?: string): string {
 export function getAlreadyWrittenComment(characterId?: string): string {
   return pickRandom(getSpeechSet(characterId).alreadyWrittenComments);
 }
+
+// Detail screen comment: post-save feel, no input prompts.
+// high → highScoreReactions, normal → saveCompleteMessages, low → lowScoreReactions
+export function getDetailComment(score: number, characterId?: string): string {
+  const set = getSpeechSet(characterId);
+  if (score >= 80) return pickRandom(set.highScoreReactions);
+  if (score > 40) return pickRandom(set.saveCompleteMessages);
+  return pickRandom(set.lowScoreReactions);
+}

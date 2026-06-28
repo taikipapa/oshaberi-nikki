@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,14 +11,25 @@ import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import ScreenLayout from '../components/ScreenLayout';
+import CharacterAvatar from '../components/CharacterAvatar';
 import CharacterBubble from '../components/CharacterBubble';
 import { RootStackParamList } from '../navigation/types';
 import { getDiaryEntryByDate, deleteDiaryEntry } from '../storage/diaryStorage';
+import { getAppSettings } from '../storage/settingsStorage';
 import { DiaryEntry } from '../types';
-import { getDiaryDateInfo } from '../utils/dateUtils';
+import { formatDateJa } from '../utils/dateUtils';
+import { CHARACTERS } from '../constants/characters';
+import { getDetailComment } from '../utils/speech';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteType = RouteProp<RootStackParamList, 'DiaryDetail'>;
+
+function formatDetailDate(targetDate: string): string {
+  const [y, m, d] = targetDate.split('-');
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  const wd = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+  return `${formatDateJa(targetDate)}（${wd}）`;
+}
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -32,21 +43,46 @@ export default function DiaryDetailScreen() {
 
   const [entry, setEntry] = useState<DiaryEntry | null>(null);
   const [loading, setLoading] = useState(true);
+  // Current selected character — used for display and edit flow
+  const [selectedCharId, setSelectedCharId] = useState<string>('leon');
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       setLoading(true);
-      getDiaryEntryByDate(targetDate).then((e) => {
+      Promise.all([
+        getDiaryEntryByDate(targetDate),
+        getAppSettings(),
+      ]).then(([e, settings]) => {
         if (!active) return;
         setEntry(e);
+        setSelectedCharId(settings.selectedCharacterId);
         setLoading(false);
       });
-      return () => {
-        active = false;
-      };
+      return () => { active = false; };
     }, [targetDate]),
   );
+
+  // Recompute when score or selected character changes
+  const characterComment = useMemo(
+    () => (entry ? getDetailComment(entry.score, selectedCharId) : ''),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entry?.score, selectedCharId],
+  );
+
+  function handleEdit() {
+    if (!entry) return;
+    navigation.navigate('DiaryFlow', {
+      targetDate,
+      initialScore: entry.score,
+      initialContent: entry.content,
+      editParams: {
+        id: entry.id,
+        createdAt: entry.createdAt,
+        characterId: selectedCharId,  // use current selected, not stored
+      },
+    });
+  }
 
   function handleDelete() {
     Alert.alert(
@@ -66,10 +102,6 @@ export default function DiaryDetailScreen() {
     );
   }
 
-  function handleEdit() {
-    Alert.alert('編集', '日記の編集機能は後で実装します。');
-  }
-
   if (loading) {
     return (
       <ScreenLayout>
@@ -86,26 +118,31 @@ export default function DiaryDetailScreen() {
         <View style={styles.center}>
           <Text style={styles.notFound}>日記が見つかりませんでした。</Text>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.backLink}>戻る</Text>
+            <Text style={styles.navLink}>戻る</Text>
           </TouchableOpacity>
         </View>
       </ScreenLayout>
     );
   }
 
+  const characterName = CHARACTERS.find((c) => c.id === selectedCharId)?.name ?? selectedCharId;
+  const expression = entry.score <= 40 ? 'worry' as const : 'normal' as const;
+
   return (
     <ScreenLayout scrollable>
-      {(() => {
-        const info = getDiaryDateInfo(entry.targetDate);
-        return (
-          <View style={styles.header}>
-            <Text style={styles.dateLabel}>{info.title}</Text>
-            {info.sub !== null && (
-              <Text style={styles.dateSub}>{info.sub}</Text>
-            )}
-          </View>
-        );
-      })()}
+      <Text style={styles.dateLabel}>{formatDetailDate(entry.targetDate)}</Text>
+
+      {/* Character: same size/layout as DiaryConfirmScreen */}
+      <View style={styles.avatarWrap}>
+        <CharacterAvatar characterId={selectedCharId} size={155} bust expression={expression} />
+        <Text style={styles.characterName}>{characterName}</Text>
+      </View>
+
+      <CharacterBubble
+        message={characterComment}
+        characterId={selectedCharId}
+        showAvatar={false}
+      />
 
       <View style={styles.card}>
         <View style={styles.scoreRow}>
@@ -125,22 +162,15 @@ export default function DiaryDetailScreen() {
         )}
       </View>
 
-      <CharacterBubble
-        message={entry.characterComment}
-        characterId={entry.characterId}
-      />
+      <Text style={styles.metaText}>記録: {formatDateTime(entry.createdAt)}</Text>
 
-      <View style={styles.metaBlock}>
-        <Text style={styles.metaText}>記録日時: {formatDateTime(entry.createdAt)}</Text>
-      </View>
-
-      <View style={styles.actions}>
+      <View style={styles.actionsRow}>
         <TouchableOpacity
           style={styles.editButton}
           onPress={handleEdit}
           activeOpacity={0.8}
         >
-          <Text style={styles.editButtonText}>編集（準備中）</Text>
+          <Text style={styles.editButtonText}>編集</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -172,35 +202,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#888',
   },
-  backLink: {
+  navLink: {
     fontSize: 15,
     color: '#F5A623',
     textDecorationLine: 'underline',
   },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 12,
-    alignItems: 'center',
-  },
   dateLabel: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#5C4A2A',
     textAlign: 'center',
+    paddingTop: 12,
+    paddingBottom: 4,
   },
-  dateSub: {
-    fontSize: 13,
-    color: '#AAA',
-    textAlign: 'center',
-    marginTop: 2,
+  avatarWrap: {
+    alignItems: 'center',
+    paddingTop: 6,
+    marginBottom: 0,
+    gap: 4,
+  },
+  characterName: {
+    fontSize: 14,
+    color: '#888',
   },
   card: {
     marginHorizontal: 20,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 8,
+    padding: 14,
+    marginBottom: 4,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -211,13 +241,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   fieldLabel: {
     fontSize: 13,
     color: '#888',
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   scoreBadge: {
     paddingHorizontal: 16,
@@ -232,48 +262,49 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: '#F0EDE8',
-    marginVertical: 8,
+    marginVertical: 6,
   },
   contentText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#333',
-    lineHeight: 26,
+    lineHeight: 22,
   },
   emptyText: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#CCC',
     fontStyle: 'italic',
   },
-  metaBlock: {
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-  },
   metaText: {
-    fontSize: 12,
-    color: '#BBB',
-  },
-  actions: {
+    fontSize: 11,
+    color: '#CCC',
+    textAlign: 'right',
     paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 6,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 2,
+    paddingBottom: 20,
     gap: 12,
   },
   editButton: {
-    backgroundColor: '#FFFFFF',
+    flex: 1,
+    backgroundColor: '#F5A623',
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E0D8CC',
   },
   editButtonText: {
     fontSize: 16,
-    color: '#AAA',
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   deleteButton: {
+    flex: 1,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#E8736B',

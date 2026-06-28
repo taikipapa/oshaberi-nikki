@@ -4,12 +4,14 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import ScreenLayout from '../components/ScreenLayout';
 import { getDiaryEntriesByMonth } from '../storage/diaryStorage';
+import { getAppSettings } from '../storage/settingsStorage';
 import { DiaryEntry } from '../types';
 import {
   getDaysInMonth,
@@ -29,15 +31,20 @@ export default function CalendarScreen() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [entries, setEntries] = useState<Record<string, DiaryEntry>>({});
+  const [selectedCharId, setSelectedCharId] = useState<string>('leon');
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      getDiaryEntriesByMonth(year, month).then((list) => {
+      Promise.all([
+        getDiaryEntriesByMonth(year, month),
+        getAppSettings(),
+      ]).then(([list, settings]) => {
         if (!active) return;
         const map: Record<string, DiaryEntry> = {};
         list.forEach((e) => (map[e.targetDate] = e));
         setEntries(map);
+        setSelectedCharId(settings.selectedCharacterId);
       });
       return () => {
         active = false;
@@ -79,7 +86,13 @@ export default function CalendarScreen() {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     if (entries[dateStr]) {
       navigation.navigate('DiaryDetail', { targetDate: dateStr });
+      return;
     }
+    if (dateStr > toDateString(new Date())) {
+      Alert.alert('まだ書けません', '未来の日付の日記はまだ書けません。');
+      return;
+    }
+    navigation.navigate('DiaryFlow', { targetDate: dateStr, initialCharacterId: selectedCharId });
   }
 
   return (
@@ -125,8 +138,8 @@ export default function CalendarScreen() {
               <TouchableOpacity
                 key={dateStr}
                 style={[styles.cell, isToday && styles.todayCell]}
-                onPress={() => entry && handleDayPress(day)}
-                activeOpacity={entry ? 0.7 : 1}
+                onPress={() => handleDayPress(day)}
+                activeOpacity={0.7}
               >
                 <Text
                   style={[

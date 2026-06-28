@@ -8,12 +8,17 @@ interface Props {
   showAvatar?: boolean;
 }
 
+// Insert a newline after each 。 that is not already followed by \n or end-of-string.
+function formatSpeech(text: string): string {
+  return text.replace(/。(?!\n|$)/g, '。\n');
+}
+
 export default function CharacterBubble({ message, characterId, showAvatar = true }: Props) {
   return (
     <View style={styles.row}>
       {showAvatar && <CharacterAvatar characterId={characterId} size={56} />}
       <View style={[styles.bubble, !showAvatar && styles.bubbleNoAvatar]}>
-        <Text style={styles.text}>{message}</Text>
+        <Text style={styles.text}>{formatSpeech(message)}</Text>
       </View>
     </View>
   );

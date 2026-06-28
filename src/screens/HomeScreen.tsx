@@ -263,7 +263,7 @@ export default function HomeScreen() {
         } else if (period === 'daytime') {
           setIdleMessage(getAfternoonComment(charId));
           setIdleMessageType('daytime');
-          setShouldWrite(false);
+          setShouldWrite(true);
         } else {
           setIdleMessage(getNightGreeting(charId));
           setIdleMessageType('night');

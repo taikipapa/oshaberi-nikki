@@ -16,7 +16,7 @@ import { RootStackParamList } from '../navigation/types';
 import { CHARACTERS } from '../constants/characters';
 import { getDiaryDateInfo } from '../utils/dateUtils';
 import { getScoreReaction } from '../utils/speech';
-import { saveDiaryEntry } from '../storage/diaryStorage';
+import { saveDiaryEntry, updateDiaryEntry } from '../storage/diaryStorage';
 import { pendingResumeRef } from '../utils/diaryEditState';
 import { DiaryEntry } from '../types';
 
@@ -30,7 +30,7 @@ function generateId(): string {
 export default function DiaryConfirmScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { targetDate, score, content, characterId } = route.params;
+  const { targetDate, score, content, characterId, editParams } = route.params;
 
   const [saving, setSaving] = useState(false);
   const diaryInfo = getDiaryDateInfo(targetDate);
@@ -42,18 +42,33 @@ export default function DiaryConfirmScreen() {
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      const entry: DiaryEntry = {
-        id: generateId(),
-        targetDate,
-        score,
-        content,
-        characterId,
-        characterComment,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await saveDiaryEntry(entry);
-      navigation.navigate('SaveComplete', { targetDate, characterId });
+      if (editParams) {
+        const updated: DiaryEntry = {
+          id: editParams.id,
+          targetDate,
+          score,
+          content,
+          characterId: editParams.characterId,
+          characterComment,
+          createdAt: editParams.createdAt,
+          updatedAt: now,
+        };
+        await updateDiaryEntry(updated);
+        navigation.pop(2); // DiaryConfirm → DiaryFlow → back to DiaryDetail
+      } else {
+        const entry: DiaryEntry = {
+          id: generateId(),
+          targetDate,
+          score,
+          content,
+          characterId,
+          characterComment,
+          createdAt: now,
+          updatedAt: now,
+        };
+        await saveDiaryEntry(entry);
+        navigation.navigate('SaveComplete', { targetDate, characterId });
+      }
     } catch {
       Alert.alert('エラー', '保存できませんでした。もう一度試してください。');
     } finally {
@@ -62,7 +77,9 @@ export default function DiaryConfirmScreen() {
   }
 
   function handleBack() {
-    pendingResumeRef.current = { targetDate, score, content, characterComment };
+    if (!editParams) {
+      pendingResumeRef.current = { targetDate, score, content, characterComment };
+    }
     navigation.goBack();
   }
 

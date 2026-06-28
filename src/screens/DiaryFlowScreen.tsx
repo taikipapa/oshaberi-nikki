@@ -19,8 +19,8 @@ import ScreenLayout from '../components/ScreenLayout';
 import CharacterAvatar from '../components/CharacterAvatar';
 import CharacterBubble from '../components/CharacterBubble';
 import { RootStackParamList } from '../navigation/types';
-import { DEFAULT_CHARACTER_ID } from '../constants/characters';
-import { toDateString, getDiaryDateInfo } from '../utils/dateUtils';
+import { CHARACTERS, DEFAULT_CHARACTER_ID } from '../constants/characters';
+import { toDateString, formatMonthDayJa } from '../utils/dateUtils';
 import {
   getAskTodayScore,
   getAskYesterdayScore,
@@ -51,27 +51,38 @@ const VOICE_UNAVAILABLE =
 export default function DiaryFlowScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { targetDate } = route.params;
+  const { targetDate, initialScore, initialContent, editParams, initialCharacterId } = route.params;
   const insets = useSafeAreaInsets();
 
   const isYesterday = targetDate !== toDateString(new Date());
 
+  // Priority: edit mode char > caller-supplied char > default
+  const charId = editParams?.characterId ?? initialCharacterId ?? DEFAULT_CHARACTER_ID;
+  const charName = CHARACTERS.find((c) => c.id === charId)?.name ?? 'ハナ';
+
   const scoreQuestion = useMemo(
     () =>
       isYesterday
-        ? getAskYesterdayScore(DEFAULT_CHARACTER_ID)
-        : getAskTodayScore(DEFAULT_CHARACTER_ID),
+        ? getAskYesterdayScore(charId)
+        : getAskTodayScore(charId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [isYesterday],
   );
-  const [contentQuestion] = useState(() => getAskContent(DEFAULT_CHARACTER_ID));
+  const [contentQuestion] = useState(() => getAskContent(charId));
 
-  const diaryInfo = getDiaryDateInfo(targetDate);
+  const headerDate = (() => {
+    const [y, m, d] = targetDate.split('-');
+    const wd = ['日', '月', '火', '水', '木', '金', '土'][new Date(Number(y), Number(m) - 1, Number(d)).getDay()];
+    return `${formatMonthDayJa(targetDate)}（${wd}）`;
+  })();
 
-  const [step, setStep] = useState<Step>('score');
-  const [score, setScore] = useState(0);
-  const [scoreText, setScoreText] = useState('');
-  const [reactionMessage, setReactionMessage] = useState('');
-  const [content, setContent] = useState('');
+  const [step, setStep] = useState<Step>(initialScore !== undefined ? 'reaction' : 'score');
+  const [score, setScore] = useState(initialScore ?? 0);
+  const [scoreText, setScoreText] = useState(initialScore !== undefined ? String(initialScore) : '');
+  const [reactionMessage, setReactionMessage] = useState(
+    initialScore !== undefined ? getScoreReaction(initialScore, charId) : '',
+  );
+  const [content, setContent] = useState(initialContent ?? '');
   const [showContentModal, setShowContentModal] = useState(false);
   const contentRef = useRef<TextInput>(null);
 
@@ -168,14 +179,14 @@ export default function DiaryFlowScreen() {
     }
     const clamped = Math.max(0, Math.min(100, parsed));
     setScore(clamped);
-    setReactionMessage(getScoreReaction(clamped, DEFAULT_CHARACTER_ID));
+    setReactionMessage(getScoreReaction(clamped, charId));
     setStep('reaction');
   }
 
   function goToConfirm(body: string) {
     setShowContentModal(false);
     Keyboard.dismiss();
-    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim(), characterId: 'leon' });
+    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim(), characterId: charId, editParams });
   }
 
   return (
@@ -184,17 +195,14 @@ export default function DiaryFlowScreen() {
 
         {/* ── Shared character header — same visual on every step ── */}
         <View style={styles.charHeader}>
-          <Text style={styles.screenTitle}>{diaryInfo.title}</Text>
-          {diaryInfo.sub !== null && (
-            <Text style={styles.screenSubTitle}>{diaryInfo.sub}</Text>
-          )}
+          <Text style={styles.screenTitle}>{headerDate}</Text>
           <View style={styles.avatarWrap}>
-            <CharacterAvatar characterId={DEFAULT_CHARACTER_ID} size={100} />
-            <Text style={styles.charName}>ハナ</Text>
+            <CharacterAvatar characterId={charId} size={155} bust />
+            <Text style={styles.charName}>{charName}</Text>
           </View>
           <CharacterBubble
             message={bubbleMessage}
-            characterId={DEFAULT_CHARACTER_ID}
+            characterId={charId}
             showAvatar={false}
           />
         </View>
@@ -351,15 +359,15 @@ const styles = StyleSheet.create({
   // ── Shared character header ───────────────────────────────
 
   charHeader: {
-    paddingTop: 12,
+    paddingTop: 8,
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
   },
   screenTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#5C4A2A',
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#AAA',
+    letterSpacing: 0.3,
   },
   screenSubTitle: {
     fontSize: 12,
@@ -367,7 +375,7 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 4,
     gap: 4,
   },
   charName: {
