@@ -8,7 +8,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "日記の音声入力のために音声認識を使用します。",
         "NSMicrophoneUsageDescription": "日記の音声入力のためにマイクを使用します。",
