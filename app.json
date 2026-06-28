@@ -19,6 +19,7 @@
       "bundleIdentifier": "com.daitaina.oshaberi-nikki"
     },
     "android": {
+      "package": "com.daitaina.oshaberinikki",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
