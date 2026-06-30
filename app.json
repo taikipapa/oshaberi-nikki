@@ -14,7 +14,8 @@
         "NSMicrophoneUsageDescription": "日記の音声入力のためにマイクを使用します。",
         "ITSAppUsesNonExemptEncryption": false,
         "NSUserTrackingUsageDescription": "広告のパーソナライズのためにデバイス識別子を使用することがあります。許可しない場合も広告は表示されます。",
-        "NSPhotoLibraryUsageDescription": "写真を選択する機能を使用する場合に、写真ライブラリへのアクセスが必要です。"
+        "NSPhotoLibraryUsageDescription": "写真を選択する機能を使用する場合に、写真ライブラリへのアクセスが必要です。",
+        "GADDelayAppMeasurementInit": true
       },
       "bundleIdentifier": "com.daitaina.oshaberi-nikki"
     },
