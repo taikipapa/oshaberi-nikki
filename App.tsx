@@ -50,6 +50,18 @@ export default function App() {
           requestPersonalizedAdsPermission(),
           getAppSettings(),
         ]);
+
+        // Dynamic import — GADDelayAppMeasurementInit=true means the native SDK
+        // is deliberately left uninitialized until now. A static top-level
+        // import of react-native-google-mobile-ads here would re-introduce the
+        // exact problem the RootNavigator/AdBanner lazy-import was meant to
+        // avoid: ad-SDK code evaluating before ATT has resolved.
+        try {
+          const mobileAdsModule = await import('react-native-google-mobile-ads');
+          await mobileAdsModule.default().initialize();
+        } catch (error) {
+          console.warn('[App] MobileAds initialize failed', error);
+        }
       } catch {
         // Never block launch on errors.
       } finally {

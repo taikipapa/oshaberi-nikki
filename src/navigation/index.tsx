@@ -10,7 +10,6 @@ import CharacterScreen from '../screens/CharacterScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import DiaryFlowScreen from '../screens/DiaryFlowScreen';
 import DiaryConfirmScreen from '../screens/DiaryConfirmScreen';
-import SaveCompleteScreen from '../screens/SaveCompleteScreen';
 import DiaryDetailScreen from '../screens/DiaryDetailScreen';
 import AdBanner from '../components/AdBanner';
 
@@ -108,11 +107,6 @@ export default function RootNavigator() {
       <Stack.Screen
         name="DiaryConfirm"
         component={DiaryConfirmScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="SaveComplete"
-        component={SaveCompleteScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

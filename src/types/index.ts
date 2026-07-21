@@ -50,7 +50,3 @@ export type DiaryConfirmParams = {
 export type DiaryDetailParams = {
   targetDate: string;
 };
-
-export type SaveCompleteParams = {
-  targetDate: string;
-};

@@ -27,6 +27,5 @@ export type RootStackParamList = {
     characterId: string;
     editParams?: DiaryEditParams;
   };
-  SaveComplete: { targetDate: string; characterId: string };
   DiaryDetail: { targetDate: string };
 };
