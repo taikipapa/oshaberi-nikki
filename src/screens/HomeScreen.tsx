@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScreenLayout from '../components/ScreenLayout';
 import CharacterAvatar from '../components/CharacterAvatar';
 import CharacterBubble from '../components/CharacterBubble';
@@ -51,7 +52,7 @@ import { pendingResumeRef } from '../utils/diaryEditState';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-type HomeDiaryStep = 'idle' | 'score' | 'reaction';
+type HomeDiaryStep = 'idle' | 'score';
 type ListeningMode = 'none' | 'score' | 'content';
 type IdleMessageType = 'morning' | 'daytime' | 'night' | 'alreadyWritten';
 
@@ -107,6 +108,11 @@ export default function HomeScreen() {
   const [reactionMessage, setReactionMessage] = useState('');
   const [content, setContent] = useState('');
   const contentRef = useRef<TextInput>(null);
+  // Content-writing step is a bottom-sheet Modal (matching the calendar-entry
+  // flow in DiaryFlowScreen) rather than an inline panel — see goToConfirm /
+  // handleCancelDiaryFlow for where this is reset.
+  const [showContentModal, setShowContentModal] = useState(false);
+  const insets = useSafeAreaInsets();
 
   // ── Voice input ──
   const [listeningMode, setListeningMode] = useState<ListeningMode>('none');
@@ -159,12 +165,12 @@ export default function HomeScreen() {
     });
   }, [diaryStep, navigation]);
 
-  // Focus content TextInput when entering the reaction step in manual mode.
+  // Focus content TextInput when the content modal opens in manual mode.
   useEffect(() => {
-    if (diaryStep === 'reaction' && contentInputMethod === 'manual') {
+    if (showContentModal && contentInputMethod === 'manual') {
       setTimeout(() => contentRef.current?.focus(), 300);
     }
-  }, [diaryStep, contentInputMethod]);
+  }, [showContentModal, contentInputMethod]);
 
   function alertVoiceActive() {
     Alert.alert('音声入力中です', '音声の入力が終わってから移動してください。');
@@ -182,13 +188,11 @@ export default function HomeScreen() {
   const bubbleMessage =
     diaryStep === 'score' && scoreEntered ? reactionMessage :
     diaryStep === 'score' ? scoreQuestion :
-    diaryStep === 'reaction' ? reactionMessage :
     (idleMessage || '…');
 
   // Show worry when a low score (≤40) has been entered; happy is reserved for
   // save-complete. Normal covers idle, pre-score, and high/mid scores.
-  const characterExpression =
-    (scoreEntered || diaryStep === 'reaction') && score <= 40 ? 'worry' : 'normal';
+  const characterExpression = scoreEntered && score <= 40 ? 'worry' : 'normal';
 
   const diaryInfo = targetDate !== '' ? getDiaryDateInfo(targetDate) : null;
 
@@ -207,8 +211,9 @@ export default function HomeScreen() {
         setScoreText(String(resume.score));
         setContent(resume.content);
         setReactionMessage(resume.characterComment);
-        setDiaryStep('reaction');
-        setScoreEntered(false);
+        setDiaryStep('score');
+        setScoreEntered(true);
+        setShowContentModal(true);
         setListeningMode('none');
         clearScoreAutoStop();
         stopSpeechRecognition();
@@ -232,6 +237,7 @@ export default function HomeScreen() {
       clearScoreAutoStop();
       stopSpeechRecognition();
       setShowScoreModal(false);
+      setShowContentModal(false);
 
       async function load() {
         const now = new Date();
@@ -482,7 +488,14 @@ export default function HomeScreen() {
     stopSpeechRecognition();
     setListeningMode('none');
     Keyboard.dismiss();
-    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim(), characterId: selectedCharacterId });
+    setShowContentModal(false);
+    navigation.navigate('DiaryConfirm', {
+      targetDate,
+      score,
+      content: body.trim(),
+      characterId: selectedCharacterId,
+      characterComment: reactionMessage,
+    });
   }
 
   function handleCancelDiaryFlow() {
@@ -498,14 +511,12 @@ export default function HomeScreen() {
     setContent('');
     setShowScoreModal(false);
     setScoreModalText('');
+    setShowContentModal(false);
   }
-
-  // ScrollView only for reaction step (has inline content TextInput in manual mode)
-  const scrollable = diaryStep === 'reaction';
 
   return (
     <>
-      <ScreenLayout scrollable={scrollable}>
+      <ScreenLayout scrollable={false}>
         <View style={[styles.inner, diaryStep !== 'idle' && styles.innerFlow]}>
 
           {/* ── Fixed top character scene ── */}
@@ -572,7 +583,7 @@ export default function HomeScreen() {
                     <TouchableOpacity
                       style={styles.writeContentBtn}
                       onPress={() => {
-                        setDiaryStep('reaction');
+                        setShowContentModal(true);
                         if (contentInputMethod === 'voice' && listeningMode === 'none') {
                           setTimeout(() => autoStartContentVoice(), 200);
                         }
@@ -675,119 +686,131 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {/* ── Reaction / content input (inline) ── */}
-          {diaryStep === 'reaction' && (
-            <View style={styles.reactionBody}>
-              <View style={styles.scoreBigWrap}>
-                <View style={[styles.scoreBig, scoreBg(score)]}>
-                  <Text style={styles.scoreBigText}>{score}点</Text>
-                </View>
-              </View>
-
-              {contentInputMethod === 'voice' ? (
-                <>
-                  {listeningMode === 'content' ? (
-                    <View style={styles.listeningBox}>
-                      <Text style={styles.listeningBoxMain}>🎤 聞き取り中…</Text>
-                      <Text style={styles.listeningBoxSub}>話し終わったら自動で入力されます</Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      disabled={listeningMode !== 'none'}
-                      style={styles.voiceContentBtn}
-                      onPress={handleVoiceContent}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.voiceContentIcon}>🎤</Text>
-                      <Text style={styles.voiceContentBtnText}>話して入力する</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {content !== '' && (
-                    <View style={styles.contentPreview}>
-                      <Text style={styles.contentPreviewLabel}>入力された内容</Text>
-                      <Text style={styles.contentPreviewText}>{content}</Text>
-                    </View>
-                  )}
-
-                  <TouchableOpacity
-                    style={styles.modeSwitchLink}
-                    onPress={async () => {
-                      if (listeningMode === 'content') {
-                        // Stop intentionally — suppress the resulting error/nomatch event.
-                        stopVoiceIntentionally();
-                        setListeningMode('none');
-                      }
-                      const updated = await updateAppSettings({ contentInputMethod: 'manual' });
-                      setContentInputMethod(updated.contentInputMethod);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.modeSwitchLinkText}>
-                      {content !== '' ? '入力された内容を編集する' : '文字で入力する'}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <TextInput
-                    ref={contentRef}
-                    style={styles.panelInput}
-                    multiline
-                    placeholder="ここに書く（空でもOK）"
-                    placeholderTextColor="#CCC"
-                    value={content}
-                    onChangeText={setContent}
-                    textAlignVertical="top"
-                    blurOnSubmit={false}
-                    returnKeyType="default"
-                  />
-                  <TouchableOpacity
-                    style={styles.modeSwitchLink}
-                    onPress={async () => {
-                      Keyboard.dismiss();
-                      const updated = await updateAppSettings({ contentInputMethod: 'voice' });
-                      setContentInputMethod(updated.contentInputMethod);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.modeSwitchLinkText}>音声で入力する</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-
-              <TouchableOpacity
-                style={styles.panelOkBtn}
-                onPress={() => goToConfirm(content)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.panelOkBtnText}>この内容でOK</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.backLink}
-                onPress={() => {
-                  if (listeningMode !== 'none') { alertVoiceActive(); return; }
-                  setDiaryStep('score');
-                }}
-              >
-                <Text style={styles.backLinkText}>点数を変える</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.cancelLink}
-                onPress={() => {
-                  if (listeningMode !== 'none') { alertVoiceActive(); return; }
-                  handleCancelDiaryFlow();
-                }}
-              >
-                <Text style={styles.cancelLinkText}>入力をやめる</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
         </View>
       </ScreenLayout>
+
+      {/* ── Content-writing modal — matches the calendar-entry flow's popup
+           (DiaryFlowScreen's contentPanel): character scene stays fixed
+           behind it, only the content step is presented as a sheet. ── */}
+      <Modal
+        visible={showContentModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowContentModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.contentModalKAV}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity
+            style={styles.contentModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowContentModal(false)}
+          />
+
+          <View style={[styles.contentPanel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            {contentInputMethod === 'voice' ? (
+              <>
+                {listeningMode === 'content' ? (
+                  <View style={styles.listeningBox}>
+                    <Text style={styles.listeningBoxMain}>🎤 聞き取り中…</Text>
+                    <Text style={styles.listeningBoxSub}>話し終わったら自動で入力されます</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    disabled={listeningMode !== 'none'}
+                    style={styles.voiceContentBtn}
+                    onPress={handleVoiceContent}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.voiceContentIcon}>🎤</Text>
+                    <Text style={styles.voiceContentBtnText}>話して入力する</Text>
+                  </TouchableOpacity>
+                )}
+
+                {content !== '' && (
+                  <View style={styles.contentPreview}>
+                    <Text style={styles.contentPreviewLabel}>入力された内容</Text>
+                    <Text style={styles.contentPreviewText}>{content}</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.modeSwitchLink}
+                  onPress={async () => {
+                    if (listeningMode === 'content') {
+                      // Stop intentionally — suppress the resulting error/nomatch event.
+                      stopVoiceIntentionally();
+                      setListeningMode('none');
+                    }
+                    const updated = await updateAppSettings({ contentInputMethod: 'manual' });
+                    setContentInputMethod(updated.contentInputMethod);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modeSwitchLinkText}>
+                    {content !== '' ? '入力された内容を編集する' : '文字で入力する'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  ref={contentRef}
+                  style={styles.panelInput}
+                  multiline
+                  placeholder="ここに書く（空でもOK）"
+                  placeholderTextColor="#CCC"
+                  value={content}
+                  onChangeText={setContent}
+                  textAlignVertical="top"
+                  blurOnSubmit={false}
+                  returnKeyType="default"
+                />
+                <TouchableOpacity
+                  style={styles.modeSwitchLink}
+                  onPress={async () => {
+                    Keyboard.dismiss();
+                    const updated = await updateAppSettings({ contentInputMethod: 'voice' });
+                    setContentInputMethod(updated.contentInputMethod);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modeSwitchLinkText}>音声で入力する</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={styles.panelOkBtn}
+              onPress={() => goToConfirm(content)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.panelOkBtnText}>この内容でOK</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.backLink}
+              onPress={() => {
+                if (listeningMode !== 'none') { alertVoiceActive(); return; }
+                setShowContentModal(false);
+              }}
+            >
+              <Text style={styles.backLinkText}>点数を変える</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelLink}
+              onPress={() => {
+                if (listeningMode !== 'none') { alertVoiceActive(); return; }
+                handleCancelDiaryFlow();
+              }}
+            >
+              <Text style={styles.cancelLinkText}>入力をやめる</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* ── Score numeric popup modal ── */}
       <Modal
@@ -1074,18 +1097,26 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // ── Reaction / content input ──────────────────────────────
+  // ── Content-writing modal ─────────────────────────────────
 
-  reactionBody: {
+  contentModalKAV: {
+    flex: 1,
+  },
+  contentModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  contentPanel: {
+    backgroundColor: '#FFFAF5',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 24,
-    paddingTop: 10,
-    paddingBottom: 24,
+    paddingTop: 20,
     gap: 14,
   },
-  scoreBigWrap: {
-    alignItems: 'center',
-    gap: 6,
-  },
+
+  // ── Reaction / content input ──────────────────────────────
+
   scoreBig: {
     paddingHorizontal: 32,
     paddingVertical: 12,

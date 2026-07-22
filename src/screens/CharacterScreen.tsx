@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -25,15 +26,20 @@ export default function CharacterScreen() {
   const [loadingAdCharacterId, setLoadingAdCharacterId] = useState<string | null>(null);
   // Prevents useFocusEffect async read from overwriting state while a write is in flight.
   const savingRef = useRef(false);
+  // Gates only the very first paint — later refocuses refresh selection/unlocks
+  // silently instead of hiding the whole grid again.
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       getAppSettings().then((s) => {
-        if (active && !savingRef.current) {
+        if (!active) return;
+        if (!savingRef.current) {
           setSelectedId(s.selectedCharacterId);
           setUnlockedIds(s.unlockedCharacterIds);
         }
+        setLoading(false);
       });
       return () => { active = false; };
     }, []),
@@ -89,6 +95,16 @@ export default function CharacterScreen() {
   }
 
   const sortedCharacters = [...CHARACTERS].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  if (loading) {
+    return (
+      <ScreenLayout>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#F5A623" />
+        </View>
+      </ScreenLayout>
+    );
+  }
 
   return (
     <ScreenLayout scrollable>
@@ -161,6 +177,11 @@ export default function CharacterScreen() {
 }
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,

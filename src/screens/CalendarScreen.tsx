@@ -1,10 +1,14 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
+  Animated,
+  PanResponder,
+  Dimensions,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,6 +36,10 @@ export default function CalendarScreen() {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [entries, setEntries] = useState<Record<string, DiaryEntry>>({});
   const [selectedCharId, setSelectedCharId] = useState<string>('leon');
+  // Gates only the very first paint of this screen — later refocuses (month
+  // change, returning from a diary edit) refresh entries/settings silently
+  // behind the already-visible grid instead of hiding the whole screen again.
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
@@ -45,6 +53,7 @@ export default function CalendarScreen() {
         list.forEach((e) => (map[e.targetDate] = e));
         setEntries(map);
         setSelectedCharId(settings.selectedCharacterId);
+        setLoading(false);
       });
       return () => {
         active = false;
@@ -69,6 +78,59 @@ export default function CalendarScreen() {
       setMonth((m) => m + 1);
     }
   }
+
+  // ── Swipe-to-change-month (RN core PanResponder + Animated — no new
+  //    native dependency). The weekday row + grid slide slightly with the
+  //    finger; releasing past the threshold (25% of screen width) or with
+  //    enough velocity commits the month change, otherwise it springs back.
+  //    Existing prev/next buttons are untouched — this is an additional
+  //    input method, not a replacement. ──
+  const screenWidth = Dimensions.get('window').width;
+  const SWIPE_DISTANCE_THRESHOLD = screenWidth * 0.25;
+  const SWIPE_VELOCITY_THRESHOLD = 0.5;
+  const translateX = useRef(new Animated.Value(0)).current;
+
+  // Recreated each render (cheap) rather than memoized, so prevMonth/nextMonth
+  // above never end up captured in a stale closure from an earlier render.
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_evt, gesture) =>
+      Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+    onPanResponderMove: Animated.event([null, { dx: translateX }], { useNativeDriver: false }),
+    onPanResponderRelease: (_evt, gesture) => {
+      const { dx, vx } = gesture;
+      if (dx <= -SWIPE_DISTANCE_THRESHOLD || vx <= -SWIPE_VELOCITY_THRESHOLD) {
+        // Swiped right-to-left → next month.
+        Animated.timing(translateX, {
+          toValue: -screenWidth,
+          duration: 180,
+          useNativeDriver: false,
+        }).start(() => {
+          translateX.setValue(0);
+          nextMonth();
+        });
+      } else if (dx >= SWIPE_DISTANCE_THRESHOLD || vx >= SWIPE_VELOCITY_THRESHOLD) {
+        // Swiped left-to-right → previous month.
+        Animated.timing(translateX, {
+          toValue: screenWidth,
+          duration: 180,
+          useNativeDriver: false,
+        }).start(() => {
+          translateX.setValue(0);
+          prevMonth();
+        });
+      } else {
+        Animated.spring(translateX, {
+          toValue: 0,
+          friction: 8,
+          useNativeDriver: false,
+        }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(translateX, { toValue: 0, friction: 8, useNativeDriver: false }).start();
+    },
+  });
 
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
@@ -95,6 +157,16 @@ export default function CalendarScreen() {
     navigation.navigate('DiaryFlow', { targetDate: dateStr, initialCharacterId: selectedCharId });
   }
 
+  if (loading) {
+    return (
+      <ScreenLayout>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#F5A623" />
+        </View>
+      </ScreenLayout>
+    );
+  }
+
   return (
     <ScreenLayout>
       <View style={styles.inner}>
@@ -108,60 +180,67 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.weekdayRow}>
-          {WEEKDAYS.map((d, i) => (
-            <View key={d} style={styles.weekdayCell}>
-              <Text
-                style={[
-                  styles.weekdayText,
-                  i === 0 && styles.sunday,
-                  i === 6 && styles.saturday,
-                ]}
-              >
-                {d}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.grid}>
-          {cells.map((day, idx) => {
-            if (!day) {
-              return <View key={`empty-${idx}`} style={styles.cell} />;
-            }
-            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const entry = entries[dateStr];
-            const isToday = dateStr === todayStr;
-            const weekday = (firstDay + day - 1) % 7;
-
-            return (
-              <TouchableOpacity
-                key={dateStr}
-                style={[styles.cell, isToday && styles.todayCell]}
-                onPress={() => handleDayPress(day)}
-                activeOpacity={0.7}
-              >
+        {/* flex:1 so the swipe-catching area also covers the empty space
+            below the grid, not just the grid cells themselves. */}
+        <Animated.View
+          style={[styles.swipeArea, { transform: [{ translateX }] }]}
+          {...panResponder.panHandlers}
+        >
+          <View style={styles.weekdayRow}>
+            {WEEKDAYS.map((d, i) => (
+              <View key={d} style={styles.weekdayCell}>
                 <Text
                   style={[
-                    styles.dayText,
-                    isToday && styles.todayText,
-                    weekday === 0 && styles.sunday,
-                    weekday === 6 && styles.saturday,
+                    styles.weekdayText,
+                    i === 0 && styles.sunday,
+                    i === 6 && styles.saturday,
                   ]}
                 >
-                  {day}
+                  {d}
                 </Text>
-                {entry && (
-                  <View
-                    style={[styles.scoreDot, scoreDotColor(entry.score)]}
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.grid}>
+            {cells.map((day, idx) => {
+              if (!day) {
+                return <View key={`empty-${idx}`} style={styles.cell} />;
+              }
+              const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const entry = entries[dateStr];
+              const isToday = dateStr === todayStr;
+              const weekday = (firstDay + day - 1) % 7;
+
+              return (
+                <TouchableOpacity
+                  key={dateStr}
+                  style={[styles.cell, isToday && styles.todayCell]}
+                  onPress={() => handleDayPress(day)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      isToday && styles.todayText,
+                      weekday === 0 && styles.sunday,
+                      weekday === 6 && styles.saturday,
+                    ]}
                   >
-                    <Text style={styles.scoreDotText}>{entry.score}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                    {day}
+                  </Text>
+                  {entry && (
+                    <View
+                      style={[styles.scoreDot, scoreDotColor(entry.score)]}
+                    >
+                      <Text style={styles.scoreDotText}>{entry.score}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Animated.View>
       </View>
     </ScreenLayout>
   );
@@ -174,6 +253,11 @@ function scoreDotColor(score: number) {
 }
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   inner: {
     flex: 1,
     paddingTop: 16,
@@ -199,6 +283,9 @@ const styles = StyleSheet.create({
     color: '#5C4A2A',
     minWidth: 140,
     textAlign: 'center',
+  },
+  swipeArea: {
+    flex: 1,
   },
   weekdayRow: {
     flexDirection: 'row',

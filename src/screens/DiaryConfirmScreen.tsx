@@ -33,7 +33,7 @@ function generateId(): string {
 export default function DiaryConfirmScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { targetDate, score, content, characterId, editParams } = route.params;
+  const { targetDate, score, content, characterId, editParams, characterComment: passedComment } = route.params;
 
   const [mode, setMode] = useState<Mode>('confirm');
   const [saving, setSaving] = useState(false);
@@ -48,9 +48,12 @@ export default function DiaryConfirmScreen() {
   // lifetime of this mount, so this must not be recomputed on every render
   // (getScoreReaction picks randomly — recomputing it when `saving`/`isLeaving`
   // change made the bubble flash a different confirm-band line mid-save).
+  // Prefer the line the caller already showed the user right after they
+  // entered the score (passedComment) so the reaction step and this confirm
+  // screen never disagree; only re-roll if no comment was passed in.
   const characterComment = useMemo(
-    () => getScoreReaction(score, characterId),
-    [score, characterId],
+    () => passedComment ?? getScoreReaction(score, characterId),
+    [passedComment, score, characterId],
   );
   const completeMessage = useMemo(
     () => getSaveCompleteMessage(characterId),

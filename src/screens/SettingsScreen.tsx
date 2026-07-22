@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 
 import ScreenLayout from '../components/ScreenLayout';
 import {
@@ -20,14 +20,30 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 export default function SettingsScreen() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  // Gates only the initial mount — handleSet below updates settings in place
+  // afterwards, so there is no later reload to gate.
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getAppSettings().then(setSettings);
+    getAppSettings().then((s) => {
+      setSettings(s);
+      setLoading(false);
+    });
   }, []);
 
   async function handleSet(key: keyof AppSettings, value: InputMethod) {
     const updated = await updateAppSettings({ [key]: value });
     setSettings(updated);
+  }
+
+  if (loading) {
+    return (
+      <ScreenLayout>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#F5A623" />
+        </View>
+      </ScreenLayout>
+    );
   }
 
   return (
@@ -144,6 +160,11 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   header: {
     paddingHorizontal: 24,
     paddingTop: 20,

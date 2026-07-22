@@ -26,6 +26,12 @@ export type RootStackParamList = {
     content: string;
     characterId: string;
     editParams?: DiaryEditParams;
+    // The character line already shown to the user right after they entered
+    // the score (Home's inline reaction step / DiaryFlowScreen's reaction
+    // step). When present, DiaryConfirmScreen must reuse it verbatim instead
+    // of re-rolling getScoreReaction — otherwise the two screens can show two
+    // different random lines for the same score.
+    characterComment?: string;
   };
   DiaryDetail: { targetDate: string };
 };

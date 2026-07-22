@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ import {
   startSpeechRecognition,
   stopSpeechRecognition,
 } from '../utils/speechRecognition';
+import { getAppSettings, updateAppSettings, InputMethod } from '../storage/settingsStorage';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteType = RouteProp<RootStackParamList, 'DiaryFlow'>;
@@ -90,6 +91,22 @@ export default function DiaryFlowScreen() {
 
   const [isListening, setIsListening] = useState(false);
   const voiceTargetRef = useRef<'score' | 'content' | null>(null);
+
+  // Input-method settings — same source of truth as HomeScreen/SettingsScreen,
+  // so the calendar-entry flow's initial UI (voice vs manual) matches whatever
+  // the user last chose, instead of always showing both options at once.
+  const [scoreInputMethod, setScoreInputMethod] = useState<InputMethod>('voice');
+  const [contentInputMethod, setContentInputMethod] = useState<InputMethod>('voice');
+
+  useEffect(() => {
+    let active = true;
+    getAppSettings().then((s) => {
+      if (!active) return;
+      setScoreInputMethod(s.scoreInputMethod);
+      setContentInputMethod(s.contentInputMethod);
+    });
+    return () => { active = false; };
+  }, []);
 
   const bubbleMessage = step === 'score' ? scoreQuestion : reactionMessage;
 
@@ -172,7 +189,7 @@ export default function DiaryFlowScreen() {
     }
   }
 
-  function handleScoreModalConfirm() {
+  async function handleScoreModalConfirm() {
     const val = scoreModalText.trim();
     if (val === '') {
       Alert.alert('点数を入力してください', '0〜100の数字を入力してください');
@@ -184,6 +201,10 @@ export default function DiaryFlowScreen() {
       return;
     }
     const clamped = Math.max(0, Math.min(100, parsed));
+    // Persist score input mode as manual, same as HomeScreen — confirming a
+    // numeric score is what actually commits the mode switch.
+    const updated = await updateAppSettings({ scoreInputMethod: 'manual' });
+    setScoreInputMethod(updated.scoreInputMethod);
     setScore(clamped);
     setScoreText(String(clamped));
     setReactionMessage(getScoreReaction(clamped, charId));
@@ -194,7 +215,14 @@ export default function DiaryFlowScreen() {
   function goToConfirm(body: string) {
     setShowContentModal(false);
     Keyboard.dismiss();
-    navigation.navigate('DiaryConfirm', { targetDate, score, content: body.trim(), characterId: charId, editParams });
+    navigation.navigate('DiaryConfirm', {
+      targetDate,
+      score,
+      content: body.trim(),
+      characterId: charId,
+      editParams,
+      characterComment: reactionMessage,
+    });
   }
 
   return (
@@ -218,24 +246,54 @@ export default function DiaryFlowScreen() {
         {/* ── Step 1: Score input ── */}
         {step === 'score' && (
           <View style={styles.scoreBody}>
-            <TouchableOpacity
-              style={[styles.voicePrimaryBtn, isListening && styles.voicePrimaryBtnActive]}
-              onPress={handleVoiceScore}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.voicePrimaryIcon}>{isListening ? '⏹' : '🎤'}</Text>
-              <Text style={styles.voicePrimaryText}>
-                {isListening ? '認識中… タップで止める' : '点数を声で入力する'}
-              </Text>
-            </TouchableOpacity>
+            {scoreInputMethod === 'voice' ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.voicePrimaryBtn, isListening && styles.voicePrimaryBtnActive]}
+                  onPress={handleVoiceScore}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.voicePrimaryIcon}>{isListening ? '⏹' : '🎤'}</Text>
+                  <Text style={styles.voicePrimaryText}>
+                    {isListening ? '認識中… タップで止める' : '点数を声で入力する'}
+                  </Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.numericLink}
-              onPress={() => { setScoreModalText(scoreText); setShowScoreModal(true); }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.numericLinkText}>数字で入力する</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.numericLink}
+                  onPress={() => {
+                    if (isListening) stopSpeechRecognition();
+                    setScoreModalText(scoreText);
+                    setShowScoreModal(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.numericLinkText}>数字で入力する</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.voicePrimaryBtn}
+                  onPress={() => { setScoreModalText(scoreText); setShowScoreModal(true); }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.voicePrimaryIcon}>🔢</Text>
+                  <Text style={styles.voicePrimaryText}>点数を数字で入力する</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.numericLink}
+                  onPress={async () => {
+                    const updated = await updateAppSettings({ scoreInputMethod: 'voice' });
+                    setScoreInputMethod(updated.scoreInputMethod);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.numericLinkText}>音声で入力する</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 
@@ -259,7 +317,12 @@ export default function DiaryFlowScreen() {
 
             <TouchableOpacity
               style={styles.reactionSecBtn}
-              onPress={() => setShowContentModal(true)}
+              onPress={() => {
+                setShowContentModal(true);
+                if (contentInputMethod === 'voice' && !isListening) {
+                  setTimeout(() => handleVoiceContent(), 200);
+                }
+              }}
               activeOpacity={0.8}
             >
               <Text style={styles.reactionSecBtnText}>内容も書く</Text>
@@ -293,29 +356,67 @@ export default function DiaryFlowScreen() {
           <View style={[styles.contentPanel, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             <Text style={styles.panelPrompt}>{contentQuestion}</Text>
 
-            <TouchableOpacity
-              style={[styles.voiceContentBtn, isListening && styles.voiceContentBtnActive]}
-              onPress={handleVoiceContent}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.voiceContentBtnText}>
-                {isListening ? '⏹ 認識中… タップで止める' : '🎤 話して入力する'}
-              </Text>
-            </TouchableOpacity>
+            {contentInputMethod === 'voice' ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.voiceContentBtn, isListening && styles.voiceContentBtnActive]}
+                  onPress={handleVoiceContent}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.voiceContentBtnText}>
+                    {isListening ? '⏹ 認識中… タップで止める' : '🎤 話して入力する'}
+                  </Text>
+                </TouchableOpacity>
 
-            <TextInput
-              ref={contentRef}
-              style={styles.panelInput}
-              multiline
-              autoFocus
-              placeholder="ここに書く（空でもOK）"
-              placeholderTextColor="#CCC"
-              value={content}
-              onChangeText={setContent}
-              textAlignVertical="top"
-              blurOnSubmit={false}
-              returnKeyType="default"
-            />
+                {content !== '' && (
+                  <View style={styles.contentPreview}>
+                    <Text style={styles.contentPreviewLabel}>入力された内容</Text>
+                    <Text style={styles.contentPreviewText}>{content}</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={styles.modeSwitchLink}
+                  onPress={async () => {
+                    if (isListening) stopSpeechRecognition();
+                    const updated = await updateAppSettings({ contentInputMethod: 'manual' });
+                    setContentInputMethod(updated.contentInputMethod);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modeSwitchLinkText}>
+                    {content !== '' ? '入力された内容を編集する' : '文字で入力する'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  ref={contentRef}
+                  style={styles.panelInput}
+                  multiline
+                  autoFocus
+                  placeholder="ここに書く（空でもOK）"
+                  placeholderTextColor="#CCC"
+                  value={content}
+                  onChangeText={setContent}
+                  textAlignVertical="top"
+                  blurOnSubmit={false}
+                  returnKeyType="default"
+                />
+                <TouchableOpacity
+                  style={styles.modeSwitchLink}
+                  onPress={async () => {
+                    Keyboard.dismiss();
+                    const updated = await updateAppSettings({ contentInputMethod: 'voice' });
+                    setContentInputMethod(updated.contentInputMethod);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modeSwitchLinkText}>音声で入力する</Text>
+                </TouchableOpacity>
+              </>
+            )}
 
             <TouchableOpacity
               style={styles.panelOkBtn}
@@ -607,6 +708,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#C47F00',
     fontWeight: '600',
+  },
+  contentPreview: {
+    backgroundColor: '#FFF8EE',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F0D8A8',
+    padding: 12,
+    gap: 4,
+  },
+  contentPreviewLabel: {
+    fontSize: 11,
+    color: '#AAA',
+    fontWeight: '600',
+  },
+  contentPreviewText: {
+    fontSize: 15,
+    color: '#444',
+    lineHeight: 22,
+  },
+  modeSwitchLink: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  modeSwitchLinkText: {
+    fontSize: 13,
+    color: '#BBB',
+    textDecorationLine: 'underline',
   },
   panelInput: {
     backgroundColor: '#FFFFFF',
