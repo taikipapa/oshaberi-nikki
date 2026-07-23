@@ -34,6 +34,7 @@ import {
   stopSpeechRecognition,
 } from '../utils/speechRecognition';
 import { getAppSettings, updateAppSettings, InputMethod } from '../storage/settingsStorage';
+import { createDiaryFlowId } from '../utils/diaryEditState';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteType = RouteProp<RootStackParamList, 'DiaryFlow'>;
@@ -52,6 +53,7 @@ const VOICE_UNAVAILABLE =
 export default function DiaryFlowScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
+  const [diaryFlowId] = useState(createDiaryFlowId);
   const { targetDate, initialScore, initialContent, editParams, initialCharacterId } = route.params;
   const insets = useSafeAreaInsets();
 
@@ -216,6 +218,8 @@ export default function DiaryFlowScreen() {
     setShowContentModal(false);
     Keyboard.dismiss();
     navigation.navigate('DiaryConfirm', {
+      origin: 'calendar',
+      flowId: diaryFlowId,
       targetDate,
       score,
       content: body.trim(),

@@ -48,7 +48,7 @@ import {
   InputMethod,
 } from '../storage/settingsStorage';
 import { voiceActiveRef } from '../utils/voiceState';
-import { pendingResumeRef } from '../utils/diaryEditState';
+import { createDiaryFlowId, pendingResumeRef } from '../utils/diaryEditState';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -94,6 +94,7 @@ function extractTranscript(event: any): string {
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
+  const [diaryFlowId] = useState(createDiaryFlowId);
 
   // ── Idle greeting state ──
   const [idleMessage, setIdleMessage] = useState('');
@@ -206,24 +207,28 @@ export default function HomeScreen() {
       const resume = pendingResumeRef.current;
       if (resume) {
         pendingResumeRef.current = null; // consume immediately — one-shot
-        setTargetDate(resume.targetDate);
-        setScore(resume.score);
-        setScoreText(String(resume.score));
-        setContent(resume.content);
-        setReactionMessage(resume.characterComment);
-        setDiaryStep('score');
-        setScoreEntered(true);
-        setShowContentModal(true);
-        setListeningMode('none');
-        clearScoreAutoStop();
-        stopSpeechRecognition();
-        // Refresh settings in case user changed them while on DiaryConfirmScreen
-        getAppSettings().then((s) => {
-          if (!active) return;
-          setScoreInputMethod(s.scoreInputMethod);
-          setContentInputMethod(s.contentInputMethod);
-        });
-        return () => { active = false; };
+        if (resume.origin === 'home' && resume.flowId === diaryFlowId) {
+          setTargetDate(resume.targetDate);
+          setScore(resume.score);
+          setScoreText(String(resume.score));
+          setContent(resume.content);
+          setReactionMessage(resume.characterComment);
+          selectedCharacterRef.current = resume.characterId;
+          setSelectedCharacterId(resume.characterId);
+          setDiaryStep('score');
+          setScoreEntered(true);
+          setShowContentModal(true);
+          setListeningMode('none');
+          clearScoreAutoStop();
+          stopSpeechRecognition();
+          // Refresh settings in case user changed them while on DiaryConfirmScreen
+          getAppSettings().then((s) => {
+            if (!active) return;
+            setScoreInputMethod(s.scoreInputMethod);
+            setContentInputMethod(s.contentInputMethod);
+          });
+          return () => { active = false; };
+        }
       }
 
       // Normal path: reset all diary flow state then load greeting.
@@ -279,7 +284,7 @@ export default function HomeScreen() {
 
       load();
       return () => { active = false; };
-    }, []),
+    }, [diaryFlowId]),
   );
 
   // ── Voice event listeners ──
@@ -490,6 +495,8 @@ export default function HomeScreen() {
     Keyboard.dismiss();
     setShowContentModal(false);
     navigation.navigate('DiaryConfirm', {
+      origin: 'home',
+      flowId: diaryFlowId,
       targetDate,
       score,
       content: body.trim(),

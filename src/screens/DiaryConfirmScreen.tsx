@@ -33,7 +33,16 @@ function generateId(): string {
 export default function DiaryConfirmScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteType>();
-  const { targetDate, score, content, characterId, editParams, characterComment: passedComment } = route.params;
+  const {
+    origin,
+    flowId,
+    targetDate,
+    score,
+    content,
+    characterId,
+    editParams,
+    characterComment: passedComment,
+  } = route.params;
 
   const [mode, setMode] = useState<Mode>('confirm');
   const [saving, setSaving] = useState(false);
@@ -110,6 +119,7 @@ export default function DiaryConfirmScreen() {
         };
         await saveDiaryEntry(entry);
       }
+      pendingResumeRef.current = null;
       setMode('complete');
     } catch {
       Alert.alert('エラー', '保存できませんでした。もう一度試してください。');
@@ -119,14 +129,25 @@ export default function DiaryConfirmScreen() {
   }
 
   function handleBack() {
-    if (!editParams) {
-      pendingResumeRef.current = { targetDate, score, content, characterComment };
+    if (origin === 'home' && !editParams) {
+      pendingResumeRef.current = {
+        origin,
+        flowId,
+        targetDate,
+        score,
+        content,
+        characterId,
+        characterComment,
+      };
+    } else {
+      pendingResumeRef.current = null;
     }
     navigation.goBack();
   }
 
   async function handleGoHome() {
     if (isLeavingRef.current) return;
+    pendingResumeRef.current = null;
     isLeavingRef.current = true;
     setIsLeaving(true);
     try {

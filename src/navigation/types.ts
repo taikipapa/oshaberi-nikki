@@ -11,6 +11,8 @@ export type DiaryEditParams = {
   characterId: string;
 };
 
+export type DiaryFlowOrigin = 'home' | 'calendar';
+
 export type RootStackParamList = {
   MainTabs: { screen?: keyof MainTabParamList } | undefined;
   DiaryFlow: {
@@ -21,6 +23,8 @@ export type RootStackParamList = {
     initialCharacterId?: string;
   };
   DiaryConfirm: {
+    origin: DiaryFlowOrigin;
+    flowId: string;
     targetDate: string;
     score: number;
     content: string;
