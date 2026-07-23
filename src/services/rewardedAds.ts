@@ -3,8 +3,9 @@ import { RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-googl
 import { REWARDED_AD_UNIT_ID } from '../constants/adUnits';
 import { requestPersonalizedAdsPermission } from './trackingPermission';
 
-// Upper bound on how long we wait for the ad SDK to load/show before giving
-// up — some failure modes (no network, SDK stuck) never fire LOADED or ERROR.
+// Upper bound on how long we wait for the ad SDK to load before giving up —
+// some failure modes (no network, SDK stuck) never fire LOADED or ERROR.
+// Cleared as soon as LOADED fires, so it never fires while the ad is showing.
 const LOAD_TIMEOUT_MS = 8000;
 
 function showLoadFailedAlert(): void {
@@ -28,10 +29,17 @@ export async function showRewardedAdForCharacterUnlock(_characterId: string): Pr
     let settled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
+    const clearLoadTimeout = () => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
     const finish = (earned: boolean) => {
       if (settled) return;
       settled = true;
-      if (timeoutId !== null) clearTimeout(timeoutId);
+      clearLoadTimeout();
       resolve(earned);
     };
 
@@ -48,6 +56,8 @@ export async function showRewardedAdForCharacterUnlock(_characterId: string): Pr
       let rewardEarned = false;
 
       const unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        // Ad finished loading — stop treating this as a load failure once it's showing.
+        clearLoadTimeout();
         ad.show();
       });
 
@@ -68,6 +78,7 @@ export async function showRewardedAdForCharacterUnlock(_characterId: string): Pr
       });
 
       function cleanup() {
+        clearLoadTimeout();
         unsubLoaded();
         unsubReward();
         unsubClosed();

@@ -4,8 +4,9 @@ import { INTERSTITIAL_AD_UNIT_ID } from '../constants/adUnits';
 import { requestPersonalizedAdsPermission } from './trackingPermission';
 
 const STORAGE_KEY = 'interstitial_last_date';
-// Upper bound on how long we wait for the ad SDK to load/show before giving
-// up — some failure modes (no network, SDK stuck) never fire LOADED or ERROR.
+// Upper bound on how long we wait for the ad SDK to load before giving up —
+// some failure modes (no network, SDK stuck) never fire LOADED or ERROR.
+// Cleared as soon as LOADED fires, so it never fires while the ad is showing.
 const LOAD_TIMEOUT_MS = 8000;
 
 function todayString(): string {
@@ -47,10 +48,17 @@ export async function showDailyInterstitialIfNeeded(): Promise<void> {
     let settled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
+    const clearLoadTimeout = () => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
     const finish = () => {
       if (settled) return;
       settled = true;
-      if (timeoutId !== null) clearTimeout(timeoutId);
+      clearLoadTimeout();
       resolve();
     };
 
@@ -64,6 +72,8 @@ export async function showDailyInterstitialIfNeeded(): Promise<void> {
       });
 
       const unsubLoaded = ad.addAdEventListener(AdEventType.LOADED, () => {
+        // Ad finished loading — stop treating this as a load failure once it's showing.
+        clearLoadTimeout();
         ad.show();
       });
 
@@ -79,6 +89,7 @@ export async function showDailyInterstitialIfNeeded(): Promise<void> {
       });
 
       function cleanup() {
+        clearLoadTimeout();
         unsubLoaded();
         unsubClosed();
         unsubError();
